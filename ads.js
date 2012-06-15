@@ -12,23 +12,36 @@ var getAdsObject = function(options) {
     var that = this;
     this.options = parseOptions(options);
 
-    return {
-        connect: function(cb) { adsConnect.call(that, cb); },
-        end: function() { adsEnd.apply(that); },
+    this.handle = {
+        connect: function(cb) { 
+            return connect.call(that, cb); 
+        },
+        end: function() { 
+            return end.apply(that); 
+        },
+        gethandle: function(adsname, adslength, propname) { 
+            return gethandle.apply(that, [adsname, adslength, propname]); 
+        },
         get options() { return that.options; },
         set options(v) { that.options = v; }
     };
+
+    return handle;
 };
 
 var parseOptions = function(options) {
     return options;
 };
 
-var adsConnect = function(cb) {
+var connect = function(cb) {
+    var that = this;
     this.client = net.connect(
         this.options.port, 
         this.options.host, 
-        cb);
+        function(){
+            cb.apply(that.handle);
+        }
+    );
 
     this.client.on('data', function(data) {
         console.log(data.toString());
@@ -37,10 +50,33 @@ var adsConnect = function(cb) {
 };
 
 
-var adsEnd = function() {
+var end = function() {
     if (this.client) {
         this.client.end();
     }
+};
+
+var adsHandle = {
+    adsname: null,
+    adslength: null
+};
+
+//gethandle('.varname", BYTE, 'value');
+//gethandle('.mystruct', [INT, BYTE], ['var1', 'var2']);
+var gethandle = function(adsname, adslength, propname) {
+    var handle = Object.create(adsHandle);
+    handle.adsname = adsname;
+    handle.adslength = adslength;
+
+    if (propname instanceof Array) {
+        for (var prop in propname) {
+            handle[prop] = null;
+        }
+    } else {
+        handle[propname] = null;
+    }
+
+    return handle;
 };
 
 
@@ -60,34 +96,10 @@ var adsCommandDeviceNotification = Object.Create(adsCommand);
 var adsCommandReadWrite = Object.Create(adsCommand);
 */
 
-var adsHandle = {
-    adsname: null,
-    adslength: null,
-    _symhandle: null
-};
-
-//gethandle('.varname", BYTE, 'value');
-//gethandle('.mystruct', [INT, BYTE], ['var1', 'var2']);
-exports.gethandle = function(adsname, adslength, propname) {
-    var handle = Object.create(adsHandle);
-    handle.adsname = adsname;
-    handle.adslength = adslength;
-
-    if (propname instanceof Array) {
-        for (var prop in propname) {
-            handle[prop] = null;
-        }
-    } else {
-        handle[propname] = null;
-    }
-
-    return handle;
-};
 
 var adsType = {
     length: 1
 };
-
 
 function makeType(name, length) {
     var t = Object.create(adsType);
