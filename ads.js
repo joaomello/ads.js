@@ -12,8 +12,9 @@ exports.connect = function(options, cb) {
 var getAdsObject = function(options) {
     var ads = {};
     ads.options = parseOptions(options);
+    ads.invokeId = 1;
 
-    ads.client = {
+    ads.adsClient = {
         connect: function(cb) { 
             return connect.call(ads, cb); 
         },
@@ -21,7 +22,7 @@ var getAdsObject = function(options) {
             return end.apply(ads); 
         },
         gethandle: function(adsname, adslength, propname) { 
-            return gethandle.apply(ads, [adsname, adslength, propname]); 
+            return gethandle.apply(ads, [adsname, adslength, propname]);
         },
         readDeviceInfo: function() {
             return readDeviceInfo.apply(ads);
@@ -30,7 +31,7 @@ var getAdsObject = function(options) {
         set options(v) { ads.options = v; }
     };
 
-    return ads.client;
+    return ads.adsClient;
 };
 
 var parseOptions = function(options) {
@@ -39,15 +40,16 @@ var parseOptions = function(options) {
 
 var connect = function(cb) {
     var that = this;
-    this.client = net.connect(
+
+    this.tcpClient = net.connect(
         this.options.port, 
         this.options.host, 
         function(){
-            cb.apply(that.handle);
+            cb.apply(that.adsClient);
         }
     );
 
-    this.client.on('data', function(data) {
+    this.tcpClient.on('data', function(data) {
         console.log(data.toString());
         this.emit('test');
     });
@@ -55,8 +57,8 @@ var connect = function(cb) {
 
 
 var end = function() {
-    if (this.client) {
-        this.client.end();
+    if (this.tcpClient) {
+        this.tcpClient.end();
     }
 };
 
@@ -87,15 +89,81 @@ var readDeviceInfo = function() {
     var buf = new Buffer(1);
 
     var options = {
-        commmandId: 1,
-        databuffer: buf
+        commandId: 1,
+        data: buf
     };
     buf = addCommandHeader.call(this, options);
-    //this.client.write(buf, function(){});
+    console.log(buf);
+    //this.tcpClient.write(buf, function(){});
 };
 
 var addCommandHeader = function(options) {
-    var buf = new Buffer(32 + options.databuffer.length);
+    var headerSize = 38;
+    var size = headerSize + options.data.length;
+    var offset = 0;
+
+    var header = new Buffer(headerSize);
+
+    //2 bytes resserver (=0)
+    header.writeUInt16LE(0, offset);
+    offset += 2;
+
+    //4 bytes length
+    header.writeUInt32LE(size, offset);
+    offset += 4;
+    
+    //6 bytes: amsNetIdTarget
+    var amsNetIdTarget = this.options.amsNetIdTarget.split('.');
+    for (var i=0; i<amsNetIdTarget.length;i++)
+    {
+        if (i>=6) { throw "Incorrect amsNetIdTarget length!"; }
+        amsNetIdTarget[i] = parseInt(amsNetIdTarget[i], 10);
+        header.writeUInt8(amsNetIdTarget[i], offset);
+        offset++;
+    }
+
+    //2 bytes: amsPortTarget
+    header.writeUInt16LE(this.options.amsPortTarget, offset);
+    offset += 2;
+
+    //6 bytes amsNetIdSource
+    var amsNetIdSource = this.options.amsNetIdSource.split('.');
+    for (i=0; i<amsNetIdSource.length;i++)
+    {
+        if (i>=6) { throw "Incorrect amsNetIdSource length!"; }
+        amsNetIdSource[i] = parseInt(amsNetIdSource[i], 10);
+        header.writeUInt8(amsNetIdSource[i], offset);
+        offset++;
+    }
+
+    //2 bytes: amsPortTarget
+    header.writeUInt16LE(this.options.amsPortSource, offset);
+    offset += 2;
+    
+    //2 bytes: Command ID
+    console.log(options.commandId);
+    header.writeUInt16LE(options.commandId, offset);
+    offset += 2;
+
+    //2 bytes: state flags (ads request tcp)
+    header.writeUInt16LE(4, offset);
+    offset += 2;
+
+    //4 bytes: length of the data
+    header.writeUInt32LE(options.data.length, offset);
+    offset += 4;
+
+    //4 bytes: error code
+    header.writeUInt32LE(0, offset);
+    offset += 4;
+
+    //4 bytes: error code
+    header.writeUInt32LE(this.invokeId++, offset);
+    offset += 4;
+
+    var buf = new Buffer(size);
+    header.copy(buf, 0, 0);
+    options.data.copy(buf, headerSize, 0);
 
     return buf;
 };
