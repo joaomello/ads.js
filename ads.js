@@ -1,6 +1,7 @@
-var net = require('net');  //https://github.com/joyent/node/blob/master/lib/net.js
-var events = require('events');
+'use strict';
 
+var net = require('net');
+var events = require('events');
 
 exports.connect = function(options, cb) {
     var ads = getAdsObject(options);
@@ -9,24 +10,27 @@ exports.connect = function(options, cb) {
 };
 
 var getAdsObject = function(options) {
-    var that = this;
-    this.options = parseOptions(options);
+    var ads = {};
+    ads.options = parseOptions(options);
 
-    this.handle = {
+    ads.client = {
         connect: function(cb) { 
-            return connect.call(that, cb); 
+            return connect.call(ads, cb); 
         },
         end: function() { 
-            return end.apply(that); 
+            return end.apply(ads); 
         },
         gethandle: function(adsname, adslength, propname) { 
-            return gethandle.apply(that, [adsname, adslength, propname]); 
+            return gethandle.apply(ads, [adsname, adslength, propname]); 
         },
-        get options() { return that.options; },
-        set options(v) { that.options = v; }
+        readDeviceInfo: function() {
+            return readDeviceInfo.apply(ads);
+        },
+        get options() { return ads.options; },
+        set options(v) { ads.options = v; }
     };
 
-    return handle;
+    return ads.client;
 };
 
 var parseOptions = function(options) {
@@ -79,22 +83,24 @@ var gethandle = function(adsname, adslength, propname) {
     return handle;
 };
 
+var readDeviceInfo = function() {
+    var buf = new Buffer(1);
 
-/*
-var adsPackage = {};
-var adsTcpHeader = Object.create(adsPackage);
-var adsHeader = Object.create(adsTcpHeader);
-var adsCommand = Object.create(adsHeader);
-var adsCommandReadDeviceInfo = Object.Create(adsCommand);
-var adsCommandRead = Object.Create(adsCommand);
-var adsCommandWrite = Object.Create(adsCommand);
-var adsCommandReadState = Object.Create(adsCommand);
-var adsCommandWriteControl = Object.Create(adsCommand);
-var adsCommandAddDeviceNotification = Object.Create(adsCommand);
-var adsCommandDeleteDeviceNotification = Object.Create(adsCommand);
-var adsCommandDeviceNotification = Object.Create(adsCommand);
-var adsCommandReadWrite = Object.Create(adsCommand);
-*/
+    var options = {
+        commmandId: 1,
+        databuffer: buf
+    };
+    buf = addCommandHeader.call(this, options);
+    //this.client.write(buf, function(){});
+};
+
+var addCommandHeader = function(options) {
+    var buf = new Buffer(32 + options.databuffer.length);
+
+    return buf;
+};
+
+
 
 
 var adsType = {
