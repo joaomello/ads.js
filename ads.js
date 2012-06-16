@@ -86,30 +86,29 @@ var gethandle = function(adsname, adslength, propname) {
 };
 
 var readDeviceInfo = function() {
-    var buf = new Buffer(1);
+    var buf = new Buffer(0);
 
     var options = {
         commandId: 1,
         data: buf
     };
     buf = addCommandHeader.call(this, options);
-    console.log(buf);
-    //this.tcpClient.write(buf, function(){});
+    this.tcpClient.write(buf, function(){});
 };
 
 var addCommandHeader = function(options) {
-    var headerSize = 38;
-    var size = headerSize + options.data.length;
+    var tcpHeaderSize = 6;
+    var headerSize = 32;
     var offset = 0;
 
-    var header = new Buffer(headerSize);
+    var header = new Buffer(headerSize + tcpHeaderSize);
 
     //2 bytes resserver (=0)
     header.writeUInt16LE(0, offset);
     offset += 2;
 
     //4 bytes length
-    header.writeUInt32LE(size, offset);
+    header.writeUInt32LE(headerSize + options.data.length, offset);
     offset += 4;
     
     //6 bytes: amsNetIdTarget
@@ -161,7 +160,7 @@ var addCommandHeader = function(options) {
     header.writeUInt32LE(this.invokeId++, offset);
     offset += 4;
 
-    var buf = new Buffer(size);
+    var buf = new Buffer(tcpHeaderSize + headerSize + options.data.length);
     header.copy(buf, 0, 0);
     options.data.copy(buf, headerSize, 0);
 
