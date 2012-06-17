@@ -36,6 +36,9 @@ var getAdsObject = function(options) {
 };
 
 var parseOptions = function(options) {
+    if (!options.port) { options.port = 48898; }
+    if (!options.amsPortSource) { options.amsPortSource = 32905; }
+    if (!options.amsPortTarget) { options.amsPortTarget = 801; }
     return options;
 };
 
@@ -153,7 +156,7 @@ var findStringEnd = function(data, offset)
         }
     }
     return endpos;
-}
+};
 
 var runCommand = function(options) {
     var tcpHeaderSize = 6;
