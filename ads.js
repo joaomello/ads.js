@@ -1,37 +1,66 @@
+// Copyright (c) 2012 Roeland Moors
+
+// Permission is hereby granted, free of charge, to any person obtaining a 
+// copy of this software and associated documentation files (the "Software"), 
+// to deal in the Software without restriction, including without limitation 
+// the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+// and/or sell copies of the Software, and to permit persons to whom the 
+// Software is furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in 
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+// DEALINGS IN THE SOFTWARE.
+
 'use strict';
 
 var net = require('net');
 var events = require('events');
 
 exports.connect = function(options, cb) {
-    var ads = getAdsObject(options);
-    ads.connect(cb);
-    return ads;
+    var adsClient = getAdsObject(options);
+    adsClient.connect(cb);
+    return adsClient;
 };
 
 var getAdsObject = function(options) {
+    //var ads = Object.create(emitter.prototype);
+    //emitter.call(ads);
     var ads = {};
     ads.options = parseOptions(options);
     ads.invokeId = 1;
     ads.pending = [];
 
-    ads.adsClient = {
-        connect: function(cb) { 
-            return connect.call(ads, cb); 
-        },
-        end: function() { 
-            return end.apply(ads); 
-        },
-        gethandle: function(adsname, adslength, propname) { 
-            return gethandle.apply(ads, [adsname, adslength, propname]);
-        },
-        readDeviceInfo: function(cb) {
-            return readDeviceInfo.call(ads, cb);
-        },
-        get options() { return ads.options; },
-        set options(v) { ads.options = v; }
+    var emitter = new events.EventEmitter();
+    ads.adsClient = Object.create(emitter);
+
+    ads.adsClient.connect = function(cb) { 
+        return connect.call(ads, cb); 
     };
 
+    ads.adsClient.end = function() { 
+        return end.apply(ads); 
+    };
+        
+    ads.adsClient.gethandle = function(adsname, adslength, propname) { 
+        return gethandle.apply(ads, [adsname, adslength, propname]);
+    };
+
+    ads.adsClient.readDeviceInfo = function(cb) {
+        return readDeviceInfo.call(ads, cb);
+    };
+
+    Object.defineProperty(ads.adsClient, "options", {
+        get options() { return ads.options; },
+        set options(v) { ads.options = v; }
+    });
+        
     return ads.adsClient;
 };
 
@@ -55,6 +84,16 @@ var connect = function(cb) {
 
     this.tcpClient.on('data', function(data) {
         analyseResponse.call(that, data);
+        that.tcpClient.end();
+    });
+
+    this.tcpClient.on('timeout', function(data) {
+        that.adsClient.emit('timeout', data);
+        that.tcpClient.end();
+    });
+
+    this.tcpClient.on('error', function(data) {
+        that.adsClient.emit('error', data);
         that.tcpClient.end();
     });
 };
