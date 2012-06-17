@@ -13,6 +13,7 @@ var getAdsObject = function(options) {
     var ads = {};
     ads.options = parseOptions(options);
     ads.invokeId = 1;
+    ads.pending = [];
 
     ads.adsClient = {
         connect: function(cb) { 
@@ -24,8 +25,8 @@ var getAdsObject = function(options) {
         gethandle: function(adsname, adslength, propname) { 
             return gethandle.apply(ads, [adsname, adslength, propname]);
         },
-        readDeviceInfo: function() {
-            return readDeviceInfo.apply(ads);
+        readDeviceInfo: function(cb) {
+            return readDeviceInfo.call(ads, cb);
         },
         get options() { return ads.options; },
         set options(v) { ads.options = v; }
@@ -50,8 +51,8 @@ var connect = function(cb) {
     );
 
     this.tcpClient.on('data', function(data) {
-        console.log(data.toString());
-        this.emit('test');
+        analyseResponse.call(that, data);
+        that.tcpClient.end();
     });
 };
 
@@ -60,6 +61,35 @@ var end = function() {
     if (this.tcpClient) {
         this.tcpClient.end();
     }
+};
+
+var analyseResponse = function(data) {
+    var tcpHeaderSize = 6;
+    var headerSize = 32;
+    var commandId = data.readUInt16LE(22);
+    var length = data.readUInt32LE(26);
+    var error = data.readUInt32LE(30);
+    var invokeId = data.readUInt32LE(34);
+
+    var cb = this.pending[this.invokeId];
+
+    if (!cb) { 
+        throw "Recieved a response,  but I can't find the request"; 
+    }
+
+    data = data.slice(tcpHeaderSize + headerSize);
+
+    switch (commandId) { 
+        case 1: 
+            getDeviceInfo.call(this, data, cb);
+            break;
+        case 2:
+            break;
+        default: 
+            throw 'Unknown command';
+    }
+    
+    //that.emit('test');
 };
 
 var adsHandle = {
@@ -85,21 +115,54 @@ var gethandle = function(adsname, adslength, propname) {
     return handle;
 };
 
-var readDeviceInfo = function() {
+var readDeviceInfo = function(cbb) {
     var buf = new Buffer(0);
 
     var options = {
         commandId: 1,
-        data: buf
+        data: buf,
+        cb: cbb
     };
-    buf = addCommandHeader.call(this, options);
-    this.tcpClient.write(buf, function(){});
+    runCommand.call(this, options); 
 };
 
-var addCommandHeader = function(options) {
+var getDeviceInfo = function(data, cb){
+    //console.log(data);
+
+    var adsError = data.readUInt32LE(0);
+
+    var result = {
+        majorVersion: data.readUInt8(4),
+        minorVersion: data.readUInt8(5),
+        versionBuild: data.readUInt16LE(6),
+        deviceName: data.toString('utf8', 8, findStringEnd(data, 8))
+    };
+
+    cb(result);
+};
+
+var findStringEnd = function(data, offset)
+{
+    if (!offset) { offset = 0; }
+    var endpos = offset;
+    for (var i=offset; i<data.length; i++)
+    {
+        if (data[i] === 0x00) {
+            endpos = i;
+            break;
+        }
+    }
+    return endpos;
+}
+
+var runCommand = function(options) {
     var tcpHeaderSize = 6;
     var headerSize = 32;
     var offset = 0;
+
+    if (!options.cb) {
+        throw "A command needs a callback function!";
+    }
 
     var header = new Buffer(headerSize + tcpHeaderSize);
 
@@ -140,7 +203,6 @@ var addCommandHeader = function(options) {
     offset += 2;
     
     //2 bytes: Command ID
-    console.log(options.commandId);
     header.writeUInt16LE(options.commandId, offset);
     offset += 2;
 
@@ -164,7 +226,9 @@ var addCommandHeader = function(options) {
     header.copy(buf, 0, 0);
     options.data.copy(buf, headerSize, 0);
 
-    return buf;
+    this.pending[this.invokeId] = options.cb;
+
+    this.tcpClient.write(buf);
 };
 
 
