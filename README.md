@@ -8,7 +8,7 @@ A NodeJS implementation for the Twincat ADS protocol.
 Examples
 --------
 
-### Hello PLC
+### Hello machine
 
 ```javascript
 var ads = require('./ads.js');
@@ -35,11 +35,11 @@ ads.connect(options, function(){
 
 ```javascript
 var testHandle = {
-    //Handle name 
-    symname: '.testvar',  
-    //An ads type object or an array of type objects or just a number
+    //Handle name in twincat
+    symname: '.TESTINT',  
+    //An ads type object or an array of type objects.
     //You can also specify a number or an array of numbers,
-    //the result will then be a Buffer.
+    //the result will then be a buffer object.
     bytelength: ads.INT,  
     //The propery name where the value should be written.
     //This can be an array with the same length as the array length of byteLength.      

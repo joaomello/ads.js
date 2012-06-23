@@ -37,6 +37,7 @@ var getAdsObject = function(options) {
     ads.options = parseOptions(options);
     ads.invokeId = 0;
     ads.pending = [];
+    ads.symHandlesToRelease = [];
 
     var emitter = new events.EventEmitter();
     ads.adsClient = Object.create(emitter);
@@ -97,9 +98,11 @@ var connect = function(cb) {
 
 
 var end = function() {
-    if (this.tcpClient) {
-        this.tcpClient.end();
-    }
+    releaseSymHandles.call(this, function(){
+        if (this.tcpClient) {
+            this.tcpClient.end();
+        }   
+    });
 };
 
 var analyseResponse = function(data) {
@@ -130,6 +133,21 @@ var analyseResponse = function(data) {
         case 3:
             getWriteResult.call(this, data, cb);
             break;
+        case 4:
+            //readState.call(this, data, cb);
+            break;
+        case 5:
+            //writeControl.call(this, data, cb);
+            break;
+        case 6:
+            //addDeviceNotification.call(this, data, cb);
+            break;
+        case 7:
+            //deleteDeviceNotification.call(this, data, cb);
+            break;
+        case 8:
+            //deviceNotification.call(this, data, cb);
+            break;
         case 9:
             getWriteReadResult.call(this, data, cb);
             break;
@@ -156,7 +174,8 @@ var readDeviceInfo = function(cb) {
 var read = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
-        readCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, function(result) {
+        readCommand.call(ads, 0x0000F005, handle.symhandle, 
+                         handle.totalByteLength, function(result) {
             integrateResultInHandle(handle, result);
             cb.call(ads.adsClient, handle);
         });
@@ -167,7 +186,8 @@ var write = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
         getBytesFromHandle(handle);
-        writeCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, handle.bytes, function(result) {
+        writeCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
+                          handle.bytes, function(result) {
             cb.call(ads.adsClient);
         });
     });  
@@ -178,15 +198,35 @@ var getHandle = function(handle, cb) {
     handle = parseHandle(handle);
     var buf = stringToBuffer(handle.symname);
 
-    //TODO keep a list and get only when needed
+    if (typeof handle.symhandle === 'undefined') {
 
-    writeReadCommand.call(ads, 0x0000F003, 0x00000000, buf, 4, function(result) {
+        writeReadCommand.call(ads, 0x0000F003, 0x00000000, buf, 4, function(result) {
 
-        handle.symhandle = result.readUInt32LE(0);
+            ads.symHandlesToRelease.push(result);
+            handle.symhandle = result.readUInt32LE(0);
 
-        cb.call(ads, handle);
+            cb.call(ads, handle);
+        });
+    } else cb.call(ads, handle);
+
+};
+
+var releaseSymHandles = function(cb) {
+    var ads = this;
+    if (this.symHandlesToRelease.length > 0) {
+        releaseSymHandle.call(this, this.symHandlesToRelease[0], function() {
+            releaseSymHandles.call(ads, cb);
+        });
+    }
+
+    cb.call(this);
+};
+
+var releaseSymHandle = function(symhandle, cb) {
+    var ads = this;
+    writeCommand.call(this, 0x0000F006, 0x00000000, symhandle.length, symhandle, function() {
+        cb.call(ads);
     });
-
 };
 
 //////////////////////// COMMANDS ///////////////////////
@@ -467,7 +507,7 @@ var getBytesFromHandle = function(handle) {
             handle[p].copy(buf, offset);
         }
 
-        if ((handle[p] !== 'undefined') && convert.isAdsType) {
+        if ((typeof handle[p] !== 'undefined') && convert.isAdsType) {
             switch(handle.bytelength[i].name) {
                 case 'BOOL':
                 case 'BYTE':
@@ -512,7 +552,7 @@ var getBytesFromHandle = function(handle) {
 
 var getItemByteLength = function(bytelength, convert) {
     var l = 0;
-    if (bytelength === 'number') {
+    if (typeof bytelength === 'number') {
         l = bytelength;
     } else {
         l = bytelength.length; 
@@ -574,7 +614,7 @@ exports.string = function(length) {
         length: 81
     };
 
-    if (length !== undefined) {
+    if (typeof length !== undefined) {
         t.length = arguments[0];
     }
     return t;
