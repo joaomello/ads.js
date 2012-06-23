@@ -57,6 +57,10 @@ var getAdsObject = function(options) {
         return read.call(ads, handle, cb);
     };
 
+    ads.adsClient.write = function(handle, cb) {
+        return write.call(ads, handle, cb);
+    };
+
     Object.defineProperty(ads.adsClient, "options", {
         get options() { return ads.options; },
         set options(v) { ads.options = v; }
@@ -123,6 +127,9 @@ var analyseResponse = function(data) {
         case 2:
             getReadResult.call(this, data, cb);
             break;
+        case 3:
+            getWriteResult.call(this, data, cb);
+            break;
         case 9:
             getWriteReadResult.call(this, data, cb);
             break;
@@ -152,6 +159,16 @@ var read = function(handle, cb) {
         readCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, function(result) {
             integrateResultInHandle(handle, result);
             cb.call(ads.adsClient, handle);
+        });
+    });  
+};
+
+var write = function(handle, cb) {
+    var ads = this;
+    getHandle.call(ads, handle, function(handle) {
+        getBytesFromHandle(handle);
+        writeCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, handle.bytes, function(result) {
+            cb.call(ads.adsClient);
         });
     });  
 };
@@ -188,8 +205,19 @@ var readCommand = function(indexGroup, indexOffset, bytelength, cb) {
     runCommand.call(this, options); 
 };
 
-var writeCommand = function() {
-    
+var writeCommand = function(indexGroup, indexOffset, bytelength, bytes, cb) {
+    var buf = new Buffer(12 + bytelength);
+    buf.writeUInt32LE(indexGroup, 0);
+    buf.writeUInt32LE(indexOffset, 4);
+    buf.writeUInt32LE(bytelength, 8); 
+    bytes.copy(buf, 12);
+
+    var options = {
+        commandId: 3,
+        data: buf,
+        cb: cb
+    };
+    runCommand.call(this, options);     
 };
 
 var writeReadCommand = function(indexGroup, indexOffset, writeBuffer, readLength, cb) {
@@ -317,6 +345,12 @@ var getWriteReadResult = function(data, cb) {
     cb.call(this, result);
 };
 
+var getWriteResult = function(data, cb) {
+    var adsError = data.readUInt32LE(0);
+    cb.call(this);
+};
+
+
 //////////////////// HELPERS /////////////////////////////////////////
 
 var stringToBuffer = function(someString) {
@@ -336,16 +370,52 @@ var parseOptions = function(options) {
 var integrateResultInHandle = function(handle, result) {
     var offset = 0;
     var l = 0;
+    var convert = { isAdsType: false};
     for(var i=0;i<handle.propname.length;i++) {
-        l = handle.bytelength[i].length; //TODO numbers
-        //var buf = result.slice(prevLength, l);
-        var value = null;
+        l = getItemByteLength(handle.bytelength[i], convert);
 
-        //TODO case tyoe
-        value = result.readUInt16LE(offset);
+        var value = result.slice(offset, l);
+
+        if (convert.isAdsType) {
+            switch(handle.bytelength[i].name) {
+                case 'BOOL':
+                case 'BYTE':
+                case 'USINT':
+                    value = result.readUInt8(offset);
+                    break;
+                case 'SINT':
+                    value = result.readInt8(offset);
+                    break;
+                case 'UINT':
+                case 'WORD':
+                    value = result.readUInt16LE(offset);
+                    break;
+                case 'INT':
+                    value = result.readInt16LE(offset);
+                    break;
+                case 'DWORD':
+                case 'UDINT':
+                    value = result.readUInt32LE(offset);
+                    break;
+                case 'DINT':
+                    value = result.readInt32LE(offset);
+                    break;
+                case 'REAL':
+                    value = result.readFloatLE(offset);
+                    break;
+                case 'LREAL':
+                    value = result.readDoubleLE(offset);
+                    break;
+                case 'TIME':
+                case 'TIME_OF_DAY':
+                case 'DATE':
+                case 'DATE_AND_TIME':
+                    //TODO
+                    break;
+            }
+        }
 
         handle[handle.propname[i]] = value;
-
 
         offset = l;
 
@@ -383,6 +453,74 @@ var parseHandle = function(handle){
     return handle;
 };
 
+var getBytesFromHandle = function(handle) {
+    var p = '';
+    var buf = new Buffer(handle.totalByteLength);
+    var offset = 0;
+    var convert = { isAdsType: false };
+    var l = 0;
+    for (var i=0;i<handle.propname.length;i++) {
+        p = handle.propname[i];
+        l = getItemByteLength(handle.bytelength[i], convert);
+
+        if (!convert.isAdsType) {
+            handle[p].copy(buf, offset);
+        }
+
+        if ((handle[p] !== 'undefined') && convert.isAdsType) {
+            switch(handle.bytelength[i].name) {
+                case 'BOOL':
+                case 'BYTE':
+                case 'USINT':
+                    buf.writeUInt8(handle[p], offset);
+                    break;
+                case 'SINT':
+                    buf.writeInt8(handle[p], offset);
+                    break;
+                case 'UINT':
+                case 'WORD':
+                    buf.writeUInt16LE(handle[p], offset);
+                    break;
+                case 'INT':
+                    buf.writeInt16LE(handle[p], offset);
+                    break;
+                case 'DWORD':
+                case 'UDINT':
+                    buf.writeUInt32LE(handle[p], offset);
+                    break;
+                case 'DINT':
+                    buf.writeInt32LE(handle[p], offset);
+                    break;
+                case 'REAL':
+                    buf.writeFloatLE(handle[p], offset);
+                    break;
+                case 'LREAL':
+                    buf.writeDoubleLE(handle[p], offset);
+                    break;
+                case 'TIME':
+                case 'TIME_OF_DAY':
+                case 'DATE':
+                case 'DATE_AND_TIME':
+                    //TODO
+                    break;
+            }
+        } else throw 'Property ' + p + ' not available on handle!';
+    }
+
+    handle.bytes = buf;
+};
+
+var getItemByteLength = function(bytelength, convert) {
+    var l = 0;
+    if (bytelength === 'number') {
+        l = bytelength;
+    } else {
+        l = bytelength.length; 
+        convert.isAdsType = true;
+    }
+    return l;
+};
+
 var findStringEnd = function(data, offset) {
     if (!offset) { offset = 0; }
     var endpos = offset;
@@ -398,12 +536,14 @@ var findStringEnd = function(data, offset) {
 
 
 var adsType = {
-    length: 1
+    length: 1,
+    name: ''
 };
 
 function makeType(name, length) {
     var t = Object.create(adsType);
     t.length = length;
+    t.name = name;
     Object.defineProperty(exports, name, {
         value: t,
         writable: false

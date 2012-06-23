@@ -39,7 +39,7 @@ var testHandle = {
     symname: '.testvar',  
     //An ads type object or an array of type objects or just a number
     //You can also specify a number or an array of numbers,
-    //the result will then be a byte array.
+    //the result will then be a Buffer.
     bytelength: ads.INT,  
     //The propery name where the value should be written.
     //This can be an array with the same length as the array length of byteLength.      
