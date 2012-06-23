@@ -8,12 +8,19 @@ A NodeJS implementation for the Twincat ADS protocol.
 Examples
 --------
 
+### Hello PLC
+
 ```javascript
 var ads = require('./ads.js');
 
 var options = {
+    //The IP or hostname of the target machine
     host: "10.0.0.2", 
+    //The NetId of the target machine
     amsNetIdTarget: "5.1.204.160.1.1",
+    //The NetId of the source machine.
+    //You can choose anything in the form of x.x.x.x.x.x,
+    //but on the target machine this must be added as a route.
     amsNetIdSource: "192.168.137.50.1.1",
 };
 
@@ -21,6 +28,30 @@ ads.connect(options, function(){
     this.readDeviceInfo(function(result) {
         console.log(result);
     });
+});
+```
+
+### Read something
+
+```javascript
+var testHandle = {
+    //Handle name 
+    symname: '.testvar',  
+    //An ads type object or an array of type objects or just a number
+    //You can also specify a number or an array of numbers,
+    //the result will then be a byte array.
+    bytelength: ads.INT,  
+    //The propery name where the value should be written.
+    //This can be an array with the same length as the array length of byteLength.      
+    propname: 'value'      
+};
+
+client = ads.connect(options, function(){
+    this.read(testHandle, function(result){
+        //result is the testHandle object with the new properties filled in
+        console.log(result);
+    });
+
 });
 ```
 
