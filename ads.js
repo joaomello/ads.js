@@ -214,18 +214,17 @@ var getHandle = function(handle, cb) {
 var releaseSymHandles = function(cb) {
     var ads = this;
     if (this.symHandlesToRelease.length > 0) {
-        releaseSymHandle.call(this, this.symHandlesToRelease[0], function() {
+        var symHandle = this.symHandlesToRelease.shift();
+        releaseSymHandle.call(this, symHandle, function() {
             releaseSymHandles.call(ads, cb);
         });
-    }
-
-    cb.call(this);
+    } else cb.call(this);
 };
 
 var releaseSymHandle = function(symhandle, cb) {
     var ads = this;
-    writeCommand.call(this, 0x0000F006, 0x00000000, symhandle.length, symhandle, function() {
-        cb.call(ads);
+    writeCommand.call(this, 0x0000F006, 0x00000000, symhandle.length, symhandle, function(){
+        cb.call(ads);    
     });
 };
 
