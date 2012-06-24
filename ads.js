@@ -22,7 +22,6 @@
 
 var net = require('net');
 var events = require('events');
-var colors = require('colors');
 
 exports.connect = function(options, cb) {
     var adsClient = getAdsObject(options);
@@ -31,8 +30,6 @@ exports.connect = function(options, cb) {
 };
 
 var getAdsObject = function(options) {
-    //var ads = Object.create(emitter.prototype);
-    //emitter.call(ads);
     var ads = {};
     ads.options = parseOptions(options);
     ads.invokeId = 0;
@@ -119,8 +116,7 @@ var analyseResponse = function(data) {
         throw "Recieved a response,  but I can't find the request"; 
     }
 
-    console.log('received command ' + commandId + ' id ' + invokeId);
-    logPackage(data);
+    logPackage("receiving", data, commandId, invokeId);
 
     data = data.slice(tcpHeaderSize + headerSize);
     switch (commandId) { 
@@ -348,8 +344,7 @@ var runCommand = function(options) {
 
     this.pending[this.invokeId] = options.cb;
 
-    console.log("sending command " +  options.commandId + " id " + this.invokeId);
-    logPackage(buf);
+    logPackage("sending", buf, options.commandId, this.invokeId);
     this.tcpClient.write(buf);
 };
 
@@ -365,7 +360,7 @@ var getDeviceInfoResult = function(data, cb){
         deviceName: data.toString('utf8', 8, findStringEnd(data, 8))
     };
 
-    cb.call(this.adsClient, result); //TODO
+    cb.call(this.adsClient, result); 
 };
 
 var getReadResult = function(data, cb) {
@@ -574,6 +569,17 @@ var findStringEnd = function(data, offset) {
 };
 
 
+var logPackage = function(info, buf, commandId, invokeId) {
+    while (info.length < 10) info = info + " ";
+
+    console.log(info + " -> commandId: " +  commandId + ", invokeId: " + invokeId);
+    //console.log(buf);
+};
+
+
+////////////////////////////// ADS TYPES /////////////////////////////////
+
+
 var adsType = {
     length: 1,
     name: ''
@@ -617,9 +623,4 @@ exports.string = function(length) {
         t.length = arguments[0];
     }
     return t;
-};
-
-var logPackage = function(buf) {
-
-    //console.log(buf);
 };
