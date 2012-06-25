@@ -23,6 +23,24 @@
 var net = require('net');
 var events = require('events');
 
+
+//TODO
+// var handle = client.gethandle('.testvar', ads.INT, 'value');
+// handle.read(), handle.write(), handle.notify()
+//
+// code cleanup (command params as object)
+//
+// implement all ads features
+//
+// Cluster?
+//
+// Seperate app: redis(log with TTL) + socket.io
+//
+//release notifications
+//
+
+
+
 exports.connect = function(options, cb) {
     var adsClient = getAdsObject(options);
     adsClient.connect(cb);
@@ -35,6 +53,7 @@ var getAdsObject = function(options) {
     ads.invokeId = 0;
     ads.pending = [];
     ads.symHandlesToRelease = [];
+    ads.notificationsToRelease = [];
 
     var emitter = new events.EventEmitter();
     ads.adsClient = Object.create(emitter);
@@ -57,6 +76,10 @@ var getAdsObject = function(options) {
 
     ads.adsClient.write = function(handle, cb) {
         return write.call(ads, handle, cb);
+    };
+
+    ads.adsClient.notify = function(handle, cb) {
+        return notify.call(ads, handle, cb);
     };
 
     Object.defineProperty(ads.adsClient, "options", {
@@ -96,9 +119,11 @@ var connect = function(cb) {
 
 var end = function() {
     releaseSymHandles.call(this, function(){
-        if (this.tcpClient) {
-            this.tcpClient.end();
-        }   
+        releaseNotificationHandles.call(this, function() {
+            if (this.tcpClient) {
+                this.tcpClient.end();
+            }         
+        });
     });
 };
 
@@ -136,13 +161,13 @@ var analyseResponse = function(data) {
             //writeControl.call(this, data, cb);
             break;
         case 6:
-            //addDeviceNotification.call(this, data, cb);
+            getAddDeviceNotificationResult.call(this, data, cb);
             break;
         case 7:
-            //deleteDeviceNotification.call(this, data, cb);
+            getDeleteDeviceNotificationResult.call(this, data, cb);
             break;
         case 8:
-            //deviceNotification.call(this, data, cb);
+            getNotificationResult.call(this, data, cb);
             break;
         case 9:
             getWriteReadResult.call(this, data, cb);
@@ -189,6 +214,19 @@ var write = function(handle, cb) {
     });  
 };
 
+var notify = function(handle, cb) {
+    var ads = this;
+    getHandle.call(ads, handle, function(handle) {
+        notifyCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
+                          handle.transmissionMode, handle.maxDelay, handle.cycleTime,
+                          function(result) {
+            if (typeof cb !== 'undefined') {
+                cb.call(ads.adsClient);
+            } 
+        });
+    });  
+};
+
 var getHandle = function(handle, cb) {
     var ads = this;
     handle = parseHandle(handle);
@@ -224,6 +262,17 @@ var releaseSymHandle = function(symhandle, cb) {
     });
 };
 
+var releaseNotificationHandles = function(cb) {
+    var ads = this;
+    if (this.notificationsToRelease.length > 0) {
+        var notificationHandle = this.notificationsToRelease.shift();
+        deleteDeviceNotificationCommand.call(this, notificationHandle, function() {
+            releaseNotificationHandles.call(ads, cb);
+        });
+    } else cb.call(this);
+};
+
+
 //////////////////////// COMMANDS ///////////////////////
 
 var readCommand = function(indexGroup, indexOffset, bytelength, cb) {
@@ -255,6 +304,28 @@ var writeCommand = function(indexGroup, indexOffset, bytelength, bytes, cb) {
     runCommand.call(this, options);     
 };
 
+var notifyCommand = function(indexGroup, indexOffset, bytelength, transmissionMode, 
+                             maxDelay, cycleTime, cb) {
+    var buf = new Buffer(40);
+    buf.writeUInt32LE(indexGroup, 0);
+    buf.writeUInt32LE(indexOffset, 4);
+    buf.writeUInt32LE(bytelength, 8); 
+    buf.writeUInt32LE(transmissionMode*10000, 12); 
+    buf.writeUInt32LE(maxDelay, 16); 
+    buf.writeUInt32LE(cycleTime, 20); 
+    buf.writeUInt32LE(0, 24); 
+    buf.writeUInt32LE(0, 28); 
+    buf.writeUInt32LE(0, 32); 
+    buf.writeUInt32LE(0, 36); 
+
+    var options = {
+        commandId: 6,
+        data: buf,
+        cb: cb
+    };
+    runCommand.call(this, options);     
+};
+
 var writeReadCommand = function(indexGroup, indexOffset, writeBuffer, readLength, cb) {
     var buf = new Buffer(16 + writeBuffer.length);
     buf.writeUInt32LE(indexGroup, 0);
@@ -265,6 +336,18 @@ var writeReadCommand = function(indexGroup, indexOffset, writeBuffer, readLength
 
     var options = {
         commandId: 9,
+        data: buf,
+        cb: cb
+    };
+    runCommand.call(this, options); 
+};
+
+var deleteDeviceNotificationCommand = function(notificationHandle, cb) {
+    var buf = new Buffer(4);
+    buf.writeUInt32LE(notificationHandle, 0);
+
+    var options = {
+        commandId: 7,
         data: buf,
         cb: cb
     };
@@ -384,6 +467,22 @@ var getWriteResult = function(data, cb) {
     cb.call(this);
 };
 
+var getAddDeviceNotificationResult = function(data, cb) {
+    var adsError = data.readUInt32LE(0);
+    var notificationHandle = data.readUInt32LE(4);
+    this.notificationsToRelease.push(notificationHandle);
+    cb.call(this);
+};
+
+var getDeleteDeviceNotificationResult = function(data, cb) {
+    var adsError = data.readUInt32LE(0);
+    cb.call(this);
+};
+
+var getNotificationResult = function(data) {
+
+    //TODO EMIT notification event
+};
 
 //////////////////// HELPERS /////////////////////////////////////////
 
@@ -466,7 +565,7 @@ var parseHandle = function(handle){
         if (!Array.isArray(handle.propname)) {
             handle.propname = [handle.propname];
         }
-    } else throw "The handle doesn't have a propname property!";
+    } else handle.propname = ['value'];
 
     if (typeof handle.bytelength !== 'undefined') {
         if (!Array.isArray(handle.bytelength)) {
@@ -482,7 +581,23 @@ var parseHandle = function(handle){
                 handle.totalByteLength += handle.bytelength[i].length;       
             }
         }
-    } else throw "The handle doesn't have a byteLength property!";
+    } else handle.totalByteLength = [exports.BOOL];
+
+    if (handle.bytelength.length !== handle.propname.length) {
+        throw "The array bytelength and propname should have the same length!";
+    }
+
+    if (typeof handle.transmissionMode === 'undefined') {
+        handle.transmissionMode = exports.NOTIFY.ONCHANGE;
+    }
+
+    if (typeof handle.maxDelay === 'undefined') {
+        handle.maxDelay = 0;
+    }
+
+    if (typeof handle.cycleTime === 'undefined') {
+        handle.cycleTime = 10;
+    }
 
     return handle;
 };
@@ -623,4 +738,9 @@ exports.string = function(length) {
         t.length = arguments[0];
     }
     return t;
+};
+
+exports.NOTIFY = {
+    CYCLIC: 3,
+    ONCHANGE: 4
 };

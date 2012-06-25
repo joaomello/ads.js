@@ -6,7 +6,11 @@
     "keywords": ["twincat","plc", "ads", "beckhoff"],
     "author": "Roeland Moors",
     "homepage": "https://github.com/roelandmoors/ads.js",
-    "bugs": "https://github.com/roelandmoors/ads.js/issues",
+    "bugs": { "https://github.com/roelandmoors/ads.js/issues" },
+    "licenses": [{
+        "type": "MIT",
+        "url": "https://github.com/roelandmoors/ads.js/blob/master/README.md#license-mit"
+    }],
     "repository" : {
         "type" : "git",
         "url" : "https://github.com/roelandmoors/ads.js.git"
