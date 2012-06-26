@@ -22,11 +22,20 @@ var options = {
     //You can choose anything in the form of x.x.x.x.x.x,
     //but on the target machine this must be added as a route.
     amsNetIdSource: "192.168.137.50.1.1",
+
+    //OPTIONAL: (These are set by default) 
+    //The tcp destination port
+    //port: 48898
+    //The ams source port
+    //amsPortSource: 32905
+    //The ams target port
+    //amsPortTarget: 801
 };
 
-ads.connect(options, function(){
+client = ads.connect(options, function() {
     this.readDeviceInfo(function(result) {
         console.log(result);
+        this.end();
     });
 });
 ```
@@ -34,27 +43,66 @@ ads.connect(options, function(){
 ### Read something
 
 ```javascript
-var testHandle = {
+var myHandle = {
     //Handle name in twincat
     symname: '.TESTINT',  
     //An ads type object or an array of type objects.
     //You can also specify a number or an array of numbers,
     //the result will then be a buffer object.
+    //If not defined, the default will be BOOL.
     bytelength: ads.INT,  
     //The propery name where the value should be written.
-    //This can be an array with the same length as the array length of byteLength.      
+    //This can be an array with the same length as the array length of byteLength. 
+    //If not defined, the default will be 'value'.     
     propname: 'value'      
 };
 
-client = ads.connect(options, function(){
-    this.read(testHandle, function(result){
-        //result is the testHandle object with the new properties filled in
-        console.log(result);
+client = ads.connect(options, function() {
+    this.read(myHandle, function(handle) {
+        //result is the myHandle object with the new properties filled in
+        console.log(handle.value);
+        //All handles will be released automaticly here
+        this.end();
     });
-
 });
 ```
 
+### Write something
+
+```javascript
+client = ads.connect(options, function() {
+    myHandle.value = 5;
+    this.write(myHandle, function(handle) {
+        this.read(myHandle, function(handle) {
+            console.log(handle.value);
+            this.end();
+        });
+    });
+});
+```
+
+### Get notifications
+
+```javascript
+var myHandle = {
+    symname: '.CounterTest',       
+    bytelength: ads.WORD,  
+
+    //OPTIONAL: (These are set by default)       
+    //transmissionMode: ads.NOTIFY.ONCHANGE, (other option is ads.NOTIFY.CYLCIC)
+    //maxDelay: 0,
+    //cycleTime: 10
+};
+
+client = ads.connect(options, function() {
+    this.notify(myHandle);
+});
+
+client.on('notification', function(handle){
+    console.log(handle.value);
+    this.end();
+});
+```
 
 License (MIT)
 -------------
@@ -65,4 +113,3 @@ Permission is hereby granted, free of charge, to any person obtaining a copy of 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-

@@ -23,22 +23,6 @@
 var net = require('net');
 var events = require('events');
 
-
-//TODO
-//
-// code cleanup: command params as object, check if callback exists
-//
-// implement all ads features
-//
-// Cluster?
-//
-// Seperate app: redis(log with TTL) + socket.io
-//
-// check if callback exists
-//
-
-
-
 exports.connect = function(options, cb) {
     var adsClient = getAdsObject(options);
     adsClient.connect(cb);
@@ -126,7 +110,15 @@ var end = function() {
     });
 };
 
+var ID_READ_DEVICE_INFO = 1;
+var ID_READ = 2;
+var ID_WRITE = 3;
+var ID_READ_STATE = 4;
+var ID_WRITE_CONTROL = 5;
+var ID_ADD_NOTIFICATION = 6;
+var ID_DEL_NOTIFICATION = 7;
 var ID_NOTIFICATION = 8;
+var ID_READ_WRITE = 9;
 
 var analyseResponse = function(data) {
     var tcpHeaderSize = 6;
@@ -142,42 +134,40 @@ var analyseResponse = function(data) {
         throw "Recieved a response,  but I can't find the request"; 
     }
 
-    logPackage("receiving", data, commandId, invokeId);
+    //logPackage("receiving", data, commandId, invokeId);
 
     data = data.slice(tcpHeaderSize + headerSize);
     switch (commandId) { 
-        case 1: 
+        case ID_READ_DEVICE_INFO: 
             getDeviceInfoResult.call(this, data, cb);
             break;
-        case 2:
+        case ID_READ:
             getReadResult.call(this, data, cb);
             break;
-        case 3:
+        case ID_WRITE:
             getWriteResult.call(this, data, cb);
             break;
-        case 4:
+        case ID_READ_STATE:
             //readState.call(this, data, cb);
             break;
-        case 5:
+        case ID_WRITE_CONTROL:
             //writeControl.call(this, data, cb);
             break;
-        case 6:
+        case ID_ADD_NOTIFICATION:
             getAddDeviceNotificationResult.call(this, data, cb);
             break;
-        case 7:
+        case ID_DEL_NOTIFICATION:
             getDeleteDeviceNotificationResult.call(this, data, cb);
             break;
         case ID_NOTIFICATION:
             getNotificationResult.call(this, data, cb);
             break;
-        case 9:
+        case ID_READ_WRITE:
             getWriteReadResult.call(this, data, cb);
             break;
         default: 
             throw 'Unknown command';
     }
-    
-    //that.emit('test');
 };
 
 /////////////////////// ADS FUNCTIONS ///////////////////////
@@ -186,7 +176,7 @@ var readDeviceInfo = function(cb) {
     var buf = new Buffer(0);
 
     var options = {
-        commandId: 1,
+        commandId: ID_READ_DEVICE_INFO,
         data: buf,
         cb: cb
     };
@@ -196,8 +186,14 @@ var readDeviceInfo = function(cb) {
 var read = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
-        readCommand.call(ads, 0x0000F005, handle.symhandle, 
-                         handle.totalByteLength, function(result) {
+
+        var commandOptions = {
+            indexGroup: 0x0000F005,
+            indexOffset: handle.symhandle,
+            bytelength: handle.totalByteLength
+        };
+
+        readCommand.call(ads, commandOptions, function(result) {
             integrateResultInHandle(handle, result);
             cb.call(ads.adsClient, handle);
         });
@@ -208,8 +204,13 @@ var write = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
         getBytesFromHandle(handle);
-        writeCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
-                          handle.bytes, function(result) {
+        var commandOptions = {
+            indexGroup: 0x0000F005,
+            indexOffset: handle.symhandle,
+            bytelength: handle.totalByteLength,
+            bytes: handle.bytes
+        };
+        writeCommand.call(ads, commandOptions, function(result) {
             cb.call(ads.adsClient);
         });
     });  
@@ -218,10 +219,16 @@ var write = function(handle, cb) {
 var notify = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
-        addNotificationCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
-                          handle.transmissionMode, handle.maxDelay, handle.cycleTime,
-                          function(notificationHandle) {
-            this.notifications[notificationHandle] = handle;
+        var commandOptions = {
+            indexGroup: 0x0000F005,
+            indexOffset: handle.symhandle,
+            bytelength: handle.totalByteLength,
+            transmissionMode: handle.transmissionMode, 
+            maxDelay: handle.maxDelay, 
+            cycleTime :handle.cycleTime
+        };
+        addNotificationCommand.call(ads, commandOptions, function(notiHandle) {
+            this.notifications[notiHandle] = handle;
             if (typeof cb !== 'undefined') {
                 cb.call(ads.adsClient);
             } 
@@ -236,7 +243,14 @@ var getHandle = function(handle, cb) {
 
     if (typeof handle.symhandle === 'undefined') {
 
-        writeReadCommand.call(ads, 0x0000F003, 0x00000000, buf, 4, function(result) {
+        var commandOptions = {
+            indexGroup: 0x0000F003,
+            indexOffset: 0x00000000,
+            writeBuffer: buf,
+            readLength: 4
+        };
+
+        writeReadCommand.call(ads, commandOptions, function(result) {
 
             ads.symHandlesToRelease.push(result);
             handle.symhandle = result.readUInt32LE(0);
@@ -259,7 +273,13 @@ var releaseSymHandles = function(cb) {
 
 var releaseSymHandle = function(symhandle, cb) {
     var ads = this;
-    writeCommand.call(this, 0x0000F006, 0x00000000, symhandle.length, symhandle, function(){
+    var commandOptions = {
+        indexGroup: 0x0000F006,
+        indexOffset: 0x00000000,
+        bytelength: symhandle.length,
+        bytes: symhandle
+    };
+    writeCommand.call(this, commandOptions, function(){
         cb.call(ads);    
     });
 };
@@ -277,67 +297,66 @@ var releaseNotificationHandles = function(cb) {
 
 //////////////////////// COMMANDS ///////////////////////
 
-var readCommand = function(indexGroup, indexOffset, bytelength, cb) {
+var readCommand = function(commandOptions, cb) {
     var buf = new Buffer(12);
-    buf.writeUInt32LE(indexGroup, 0);
-    buf.writeUInt32LE(indexOffset, 4);
-    buf.writeUInt32LE(bytelength, 8); 
+    buf.writeUInt32LE(commandOptions.indexGroup, 0);
+    buf.writeUInt32LE(commandOptions.indexOffset, 4);
+    buf.writeUInt32LE(commandOptions.bytelength, 8); 
 
     var options = {
-        commandId: 2,
+        commandId: ID_READ,
         data: buf,
         cb: cb
     };
     runCommand.call(this, options); 
 };
 
-var writeCommand = function(indexGroup, indexOffset, bytelength, bytes, cb) {
-    var buf = new Buffer(12 + bytelength);
-    buf.writeUInt32LE(indexGroup, 0);
-    buf.writeUInt32LE(indexOffset, 4);
-    buf.writeUInt32LE(bytelength, 8); 
-    bytes.copy(buf, 12);
+var writeCommand = function(commandOptions, cb) {
+    var buf = new Buffer(12 + commandOptions.bytelength);
+    buf.writeUInt32LE(commandOptions.indexGroup, 0);
+    buf.writeUInt32LE(commandOptions.indexOffset, 4);
+    buf.writeUInt32LE(commandOptions.bytelength, 8); 
+    commandOptions.bytes.copy(buf, 12);
 
     var options = {
-        commandId: 3,
+        commandId: ID_WRITE,
         data: buf,
         cb: cb
     };
     runCommand.call(this, options);     
 };
 
-var addNotificationCommand = function(indexGroup, indexOffset, bytelength, transmissionMode, 
-                             maxDelay, cycleTime, cb) {
+var addNotificationCommand = function(commandOptions, cb) {
     var buf = new Buffer(40);
-    buf.writeUInt32LE(indexGroup, 0);
-    buf.writeUInt32LE(indexOffset, 4);
-    buf.writeUInt32LE(bytelength, 8); 
-    buf.writeUInt32LE(transmissionMode, 12); 
-    buf.writeUInt32LE(maxDelay, 16); 
-    buf.writeUInt32LE(cycleTime*10000, 20); 
+    buf.writeUInt32LE(commandOptions.indexGroup, 0);
+    buf.writeUInt32LE(commandOptions.indexOffset, 4);
+    buf.writeUInt32LE(commandOptions.bytelength, 8); 
+    buf.writeUInt32LE(commandOptions.transmissionMode, 12); 
+    buf.writeUInt32LE(commandOptions.maxDelay, 16); 
+    buf.writeUInt32LE(commandOptions.cycleTime*10000, 20); 
     buf.writeUInt32LE(0, 24); 
     buf.writeUInt32LE(0, 28); 
     buf.writeUInt32LE(0, 32); 
     buf.writeUInt32LE(0, 36); 
 
     var options = {
-        commandId: 6,
+        commandId: ID_ADD_NOTIFICATION,
         data: buf,
         cb: cb
     };
     runCommand.call(this, options);     
 };
 
-var writeReadCommand = function(indexGroup, indexOffset, writeBuffer, readLength, cb) {
-    var buf = new Buffer(16 + writeBuffer.length);
-    buf.writeUInt32LE(indexGroup, 0);
-    buf.writeUInt32LE(indexOffset, 4);
-    buf.writeUInt32LE(readLength, 8); 
-    buf.writeUInt32LE(writeBuffer.length, 12); 
-    writeBuffer.copy(buf, 16);
+var writeReadCommand = function(commandOptions, cb) {
+    var buf = new Buffer(16 + commandOptions.writeBuffer.length);
+    buf.writeUInt32LE(commandOptions.indexGroup, 0);
+    buf.writeUInt32LE(commandOptions.indexOffset, 4);
+    buf.writeUInt32LE(commandOptions.readLength, 8); 
+    buf.writeUInt32LE(commandOptions.writeBuffer.length, 12); 
+    commandOptions.writeBuffer.copy(buf, 16);
 
     var options = {
-        commandId: 9,
+        commandId: ID_READ_WRITE,
         data: buf,
         cb: cb
     };
@@ -349,7 +368,7 @@ var deleteDeviceNotificationCommand = function(notificationHandle, cb) {
     buf.writeUInt32LE(notificationHandle, 0);
 
     var options = {
-        commandId: 7,
+        commandId: ID_DEL_NOTIFICATION,
         data: buf,
         cb: cb
     };
@@ -429,7 +448,7 @@ var runCommand = function(options) {
 
     this.pending[this.invokeId] = options.cb;
 
-    logPackage("sending", buf, options.commandId, this.invokeId);
+    //logPackage("sending", buf, options.commandId, this.invokeId);
     this.tcpClient.write(buf);
 };
 
@@ -520,9 +539,24 @@ var stringToBuffer = function(someString) {
 };
 
 var parseOptions = function(options) {
+
+    //Defaults
     if (!options.port) { options.port = 48898; }
     if (!options.amsPortSource) { options.amsPortSource = 32905; }
     if (!options.amsPortTarget) { options.amsPortTarget = 801; }
+
+    if (typeof options.host === 'undefined') {
+        throw "host not defined!";
+    }
+
+    if (typeof options.amsNetIdTarget === 'undefined') {
+        throw "amsNetIdTarget not defined!";
+    }
+
+    if (typeof options.amsNetIdSource === 'undefined') {
+        throw "amsNetIdTarget not defined!";
+    }
+
     return options;
 };
 
