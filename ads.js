@@ -25,10 +25,8 @@ var events = require('events');
 
 
 //TODO
-// var handle = client.gethandle('.testvar', ads.INT, 'value');
-// handle.read(), handle.write(), handle.notify()
 //
-// code cleanup (command params as object)
+// code cleanup: command params as object, check if callback exists
 //
 // implement all ads features
 //
@@ -36,7 +34,7 @@ var events = require('events');
 //
 // Seperate app: redis(log with TTL) + socket.io
 //
-//release notifications
+// check if callback exists
 //
 
 
@@ -54,6 +52,7 @@ var getAdsObject = function(options) {
     ads.pending = [];
     ads.symHandlesToRelease = [];
     ads.notificationsToRelease = [];
+    ads.notifications = {};
 
     var emitter = new events.EventEmitter();
     ads.adsClient = Object.create(emitter);
@@ -127,6 +126,8 @@ var end = function() {
     });
 };
 
+var ID_NOTIFICATION = 8;
+
 var analyseResponse = function(data) {
     var tcpHeaderSize = 6;
     var headerSize = 32;
@@ -137,7 +138,7 @@ var analyseResponse = function(data) {
 
     var cb = this.pending[invokeId];
 
-    if (!cb) { 
+    if ((!cb) && (commandId !== ID_NOTIFICATION)) { 
         throw "Recieved a response,  but I can't find the request"; 
     }
 
@@ -166,7 +167,7 @@ var analyseResponse = function(data) {
         case 7:
             getDeleteDeviceNotificationResult.call(this, data, cb);
             break;
-        case 8:
+        case ID_NOTIFICATION:
             getNotificationResult.call(this, data, cb);
             break;
         case 9:
@@ -217,9 +218,10 @@ var write = function(handle, cb) {
 var notify = function(handle, cb) {
     var ads = this;
     getHandle.call(ads, handle, function(handle) {
-        notifyCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
+        addNotificationCommand.call(ads, 0x0000F005, handle.symhandle, handle.totalByteLength, 
                           handle.transmissionMode, handle.maxDelay, handle.cycleTime,
-                          function(result) {
+                          function(notificationHandle) {
+            this.notifications[notificationHandle] = handle;
             if (typeof cb !== 'undefined') {
                 cb.call(ads.adsClient);
             } 
@@ -304,15 +306,15 @@ var writeCommand = function(indexGroup, indexOffset, bytelength, bytes, cb) {
     runCommand.call(this, options);     
 };
 
-var notifyCommand = function(indexGroup, indexOffset, bytelength, transmissionMode, 
+var addNotificationCommand = function(indexGroup, indexOffset, bytelength, transmissionMode, 
                              maxDelay, cycleTime, cb) {
     var buf = new Buffer(40);
     buf.writeUInt32LE(indexGroup, 0);
     buf.writeUInt32LE(indexOffset, 4);
     buf.writeUInt32LE(bytelength, 8); 
-    buf.writeUInt32LE(transmissionMode*10000, 12); 
+    buf.writeUInt32LE(transmissionMode, 12); 
     buf.writeUInt32LE(maxDelay, 16); 
-    buf.writeUInt32LE(cycleTime, 20); 
+    buf.writeUInt32LE(cycleTime*10000, 20); 
     buf.writeUInt32LE(0, 24); 
     buf.writeUInt32LE(0, 28); 
     buf.writeUInt32LE(0, 32); 
@@ -471,7 +473,7 @@ var getAddDeviceNotificationResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
     var notificationHandle = data.readUInt32LE(4);
     this.notificationsToRelease.push(notificationHandle);
-    cb.call(this);
+    cb.call(this, notificationHandle);
 };
 
 var getDeleteDeviceNotificationResult = function(data, cb) {
@@ -480,8 +482,32 @@ var getDeleteDeviceNotificationResult = function(data, cb) {
 };
 
 var getNotificationResult = function(data) {
+    var length = data.readUInt32LE(0);
+    var stamps = data.readUInt32LE(4);
+    var offset = 8;
+    var timestamp = 0;
+    var samples = 0;
+    var notiHandle = 0;
+    var size = 0;
 
-    //TODO EMIT notification event
+    for (var i=0;i<stamps;i++) {
+        timestamp = data.readUInt32LE(offset); //TODO 8 bytes and convert
+        offset += 8;
+        samples = data.readUInt32LE(offset);
+        offset += 4;
+        for (var j=0;j<samples;j++) {
+            notiHandle = data.readUInt32LE(offset);
+            offset += 4;
+            size = data.readUInt32LE(offset);
+            offset += 4;
+            var buf = new Buffer(size);
+            data.copy(buf, 0, offset);
+            offset += size;
+            var handle = this.notifications[notiHandle];
+            integrateResultInHandle(handle, buf);
+            this.adsClient.emit("notification", handle);
+        }
+    }
 };
 
 //////////////////// HELPERS /////////////////////////////////////////
