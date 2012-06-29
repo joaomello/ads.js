@@ -11,7 +11,7 @@ Examples
 ### Hello machine
 
 ```javascript
-var ads = require('./ads.js');
+var ads = require('ads');
 
 var options = {
     //The IP or hostname of the target machine
@@ -37,6 +37,10 @@ client = ads.connect(options, function() {
         console.log(result);
         this.end();
     });
+});
+
+client.on('error', function(error) {
+    console.log(error);
 });
 ```
 
