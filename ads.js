@@ -95,14 +95,17 @@ var connect = function(cb) {
         that.tcpClient.end();
     });
 
-    this.tcpClient.on('error', function(data) {
+    this.dataCallback = function(data) {
         that.adsClient.emit('error', data);
         that.tcpClient.end();
-    });
+    };
+
+    this.tcpClient.on('error', this.dataCallback);
 };
 
 
 var end = function(cb) {
+    this.tcpClient.removeListener('data', this.dataCallback);
     releaseSymHandles.call(this, function(){
         releaseNotificationHandles.call(this, function() {
             if (this.tcpClient) {
@@ -746,7 +749,7 @@ var parseHandle = function(handle){
     }
 
     if (typeof handle.cycleTime === 'undefined') {
-        handle.cycleTime = 100;
+        handle.cycleTime = 10;
     }
 
     return handle;
