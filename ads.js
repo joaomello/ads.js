@@ -45,8 +45,8 @@ var getAdsObject = function(options) {
         return connect.call(ads, cb); 
     };
 
-    ads.adsClient.end = function() { 
-        return end.call(ads); 
+    ads.adsClient.end = function(cb) { 
+        return end.call(ads, cb); 
     };
 
     ads.adsClient.readDeviceInfo = function(cb) {
@@ -84,6 +84,8 @@ var connect = function(cb) {
         }
     );
 
+    //this.tcpClient.setKeepAlive(true);
+
     this.tcpClient.on('data', function(data) {
         analyseResponse.call(that, data);
     });
@@ -100,12 +102,13 @@ var connect = function(cb) {
 };
 
 
-var end = function() {
+var end = function(cb) {
     releaseSymHandles.call(this, function(){
         releaseNotificationHandles.call(this, function() {
             if (this.tcpClient) {
                 this.tcpClient.end();
-            }         
+            }    
+            cb();     
         });
     });
 };
@@ -136,7 +139,7 @@ var analyseResponse = function(data) {
         throw "Recieved a response,  but I can't find the request"; 
     }
 
-    //logPackage("receiving", data, commandId, invokeId);
+    logPackage.call(this, "receiving", data, commandId, invokeId);
 
     data = data.slice(tcpHeaderSize + headerSize);
     switch (commandId) { 
@@ -162,7 +165,7 @@ var analyseResponse = function(data) {
             getDeleteDeviceNotificationResult.call(this, data, cb);
             break;
         case ID_NOTIFICATION:
-            getNotificationResult.call(this, data, cb);
+            getNotificationResult.call(this, data);
             break;
         case ID_READ_WRITE:
             getWriteReadResult.call(this, data, cb);
@@ -192,7 +195,8 @@ var read = function(handle, cb) {
         var commandOptions = {
             indexGroup: 0x0000F005,
             indexOffset: handle.symhandle,
-            bytelength: handle.totalByteLength
+            bytelength: handle.totalByteLength,
+            symname: handle.symnane,
         };
 
         readCommand.call(ads, commandOptions, function(result) {
@@ -210,7 +214,8 @@ var write = function(handle, cb) {
             indexGroup: 0x0000F005,
             indexOffset: handle.symhandle,
             bytelength: handle.totalByteLength,
-            bytes: handle.bytes
+            bytes: handle.bytes,
+            symname: handle.symname,
         };
         writeCommand.call(ads, commandOptions, function(result) {
             cb.call(ads.adsClient);
@@ -227,9 +232,14 @@ var notify = function(handle, cb) {
             bytelength: handle.totalByteLength,
             transmissionMode: handle.transmissionMode, 
             maxDelay: handle.maxDelay, 
-            cycleTime :handle.cycleTime
+            cycleTime: handle.cycleTime,
+            symname: handle.symname,
         };
         addNotificationCommand.call(ads, commandOptions, function(notiHandle) {
+            if (ads.options.verbose > 0) {
+                console.log("Add notiHandle " + notiHandle);
+            }
+
             this.notifications[notiHandle] = handle;
             if (typeof cb !== 'undefined') {
                 cb.call(ads.adsClient);
@@ -249,7 +259,8 @@ var getHandle = function(handle, cb) {
             indexGroup: 0x0000F003,
             indexOffset: 0x00000000,
             writeBuffer: buf,
-            readLength: 4
+            readLength: 4,
+            symname: handle.symname,
         };
 
         writeReadCommand.call(ads, commandOptions, function(result) {
@@ -311,7 +322,8 @@ var readCommand = function(commandOptions, cb) {
     var options = {
         commandId: ID_READ,
         data: buf,
-        cb: cb
+        cb: cb,
+        symname: commandOptions.symname,
     };
     runCommand.call(this, options); 
 };
@@ -326,7 +338,8 @@ var writeCommand = function(commandOptions, cb) {
     var options = {
         commandId: ID_WRITE,
         data: buf,
-        cb: cb
+        cb: cb,
+        symname: commandOptions.symname,
     };
     runCommand.call(this, options);     
 };
@@ -347,7 +360,8 @@ var addNotificationCommand = function(commandOptions, cb) {
     var options = {
         commandId: ID_ADD_NOTIFICATION,
         data: buf,
-        cb: cb
+        cb: cb,
+        symname: commandOptions.symname,
     };
     runCommand.call(this, options);     
 };
@@ -363,7 +377,8 @@ var writeReadCommand = function(commandOptions, cb) {
     var options = {
         commandId: ID_READ_WRITE,
         data: buf,
-        cb: cb
+        cb: cb,
+        symname: commandOptions.symname,
     };
     runCommand.call(this, options); 
 };
@@ -453,7 +468,7 @@ var runCommand = function(options) {
 
     this.pending[this.invokeId] = options.cb;
 
-    //logPackage("sending", buf, options.commandId, this.invokeId);
+    logPackage.call(this, "sending", buf, options.commandId, this.invokeId, options.symname);
     this.tcpClient.write(buf);
 };
 
@@ -533,9 +548,24 @@ var getNotificationResult = function(data) {
             var buf = new Buffer(size);
             data.copy(buf, 0, offset);
             offset += size;
+
+            if (this.options.verbose > 0) {
+                console.log("Get notiHandle " + notiHandle);
+            }
+
             var handle = this.notifications[notiHandle];
-            integrateResultInHandle(handle, buf);
-            this.adsClient.emit("notification", handle);
+
+            //It can happen that there is a notification before I
+            //even have the notification handle.
+            //In that case I just skip this notification.
+            if (handle !== undefined) {
+                integrateResultInHandle(handle, buf);
+                this.adsClient.emit("notification", handle);
+            } else {
+                if (this.options.verbose > 0) {
+                    console.log("skipping notification " + notiHandle);
+                }    
+            }
         }
     }
 };
@@ -576,7 +606,46 @@ var parseOptions = function(options) {
         throw "amsNetIdTarget not defined!";
     }
 
+    if (options.verbose === undefined) {
+        options.verbose = 0;
+    }
+
     return options;
+};
+
+var getCommandDescription = function(commandId) {
+
+    var desc = "Unknown command";
+    switch (commandId) { 
+        case ID_READ_DEVICE_INFO: 
+            desc = "Read device info";
+            break;
+        case ID_READ:
+            desc = "Read";
+            break;
+        case ID_WRITE:
+            desc = "Write";
+            break;
+        case ID_READ_STATE:
+            desc = "Read state";
+            break;
+        case ID_WRITE_CONTROL:
+            desc = "Write control";
+            break;
+        case ID_ADD_NOTIFICATION:
+            desc = "Add notification";
+            break;
+        case ID_DEL_NOTIFICATION:
+            desc = "Delete notification";
+            break;
+        case ID_NOTIFICATION:
+            desc = "Notification";
+            break;
+        case ID_READ_WRITE:
+            desc = "ReadWrite";
+            break;
+    }
+    return desc;
 };
 
 var integrateResultInHandle = function(handle, result) {
@@ -636,7 +705,6 @@ var integrateResultInHandle = function(handle, result) {
 
 var parseHandle = function(handle){
     if (typeof handle.symname === 'undefined') {
-        console.log(handle);
         throw "The handle doesn't have a symname property!";    
     }
 
@@ -646,21 +714,24 @@ var parseHandle = function(handle){
         }
     } else handle.propname = ['value'];
 
-    if (typeof handle.bytelength !== 'undefined') {
-        if (!Array.isArray(handle.bytelength)) {
-            handle.bytelength = [handle.bytelength];
-        }
+    if (typeof handle.bytelength === 'undefined') {
+        handle.bytelength = [exports.BOOL];
+    }
 
-        handle.totalByteLength = 0;
-        for (var i=0; i<handle.bytelength.length; i++) {
-             if (typeof handle.bytelength[i]  === 'number') {
-                handle.totalByteLength += handle.bytelength[i];        
-            }
-            if (typeof handle.bytelength[i]  === 'object') {
-                handle.totalByteLength += handle.bytelength[i].length;       
-            }
+    if (!Array.isArray(handle.bytelength)) {
+        handle.bytelength = [handle.bytelength];
+    }
+
+    handle.totalByteLength = 0;
+    for (var i=0; i<handle.bytelength   .length; i++) {
+         if (typeof handle.bytelength[i]  === 'number') {
+            handle.totalByteLength += handle.bytelength[i];        
         }
-    } else handle.totalByteLength = [exports.BOOL];
+        if (typeof handle.bytelength[i]  === 'object') {
+            handle.totalByteLength += handle.bytelength[i].length;       
+        }
+    }
+
 
     if (handle.bytelength.length !== handle.propname.length) {
         throw "The array bytelength and propname should have the same length!";
@@ -675,7 +746,7 @@ var parseHandle = function(handle){
     }
 
     if (typeof handle.cycleTime === 'undefined') {
-        handle.cycleTime = 10;
+        handle.cycleTime = 100;
     }
 
     return handle;
@@ -763,11 +834,25 @@ var findStringEnd = function(data, offset) {
 };
 
 
-var logPackage = function(info, buf, commandId, invokeId) {
+var logPackage = function(info, buf, commandId, invokeId, symname) {
     while (info.length < 10) info = info + " ";
 
-    console.log(info + " -> commandId: " +  commandId + ", invokeId: " + invokeId);
-    //console.log(buf);
+    var msg = info + " -> commandId: " +  commandId;
+    msg += ' (' + getCommandDescription(commandId) + ') ';
+
+    msg += ", invokeId: " + invokeId;
+
+    if (symname !== undefined) {
+        msg += " symname: " + symname;
+    } 
+
+    if (this.options.verbose > 0) {
+        console.log(msg);
+    }
+
+    if (this.options.verbose > 1) {
+        console.log(buf);
+    }
 };
 
 var emitAdsError = function(errorId)  {
