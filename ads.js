@@ -699,7 +699,6 @@ var integrateResultInHandle = function(handle, result) {
                     var seconds = result.readUInt32LE(offset);
                     value = new Date(seconds * 1000);
                     var timeoffset = value.getTimezoneOffset();
-                    //value = new Date(value.getMilliseconds() + timeoffset * 60 * 1000);
                     value = new Date(value.setMinutes(value.getMinutes() + timeoffset));
                     break;
             }
@@ -707,7 +706,7 @@ var integrateResultInHandle = function(handle, result) {
 
         handle[handle.propname[i]] = value;
 
-        offset = l;
+        offset += l;
 
     }
 };

@@ -1,6 +1,6 @@
 {
     "name": "ads",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "description": "Twincat ADS protocol implementation for NodeJS",
     "main": "ads.js",
     "keywords": ["twincat","plc", "ads", "beckhoff"],
