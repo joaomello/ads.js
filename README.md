@@ -94,8 +94,8 @@ var myHandle = {
 
     //OPTIONAL: (These are set by default)       
     //transmissionMode: ads.NOTIFY.ONCHANGE, (other option is ads.NOTIFY.CYLCIC)
-    //maxDelay: 0,
-    //cycleTime: 10
+    //maxDelay: 0,  -> Latest time (in ms) after which the event has finished
+    //cycleTime: 10 -> Time (in ms) after which the PLC server checks whether the variable has changed
 };
 
 client = ads.connect(options, function() {
@@ -104,7 +104,16 @@ client = ads.connect(options, function() {
 
 client.on('notification', function(handle){
     console.log(handle.value);
-    this.end();
+});
+
+process.on('exit', function () {
+    console.log("exit");
+});
+
+process.on('SIGINT', function() {
+    client.end(function() {
+        process.exit();
+    });
 });
 ```
 

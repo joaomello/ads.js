@@ -22,6 +22,8 @@
 
 var net = require('net');
 var events = require('events');
+var buf = require('buffer');
+buf.INSPECT_MAX_BYTES = 200;
 
 exports.connect = function(options, cb) {
     var adsClient = getAdsObject(options);
@@ -134,6 +136,8 @@ var analyseResponse = function(data) {
     var error = data.readUInt32LE(30);
     var invokeId = data.readUInt32LE(34);
 
+    logPackage.call(this, "receiving", data, commandId, invokeId);
+
     emitAdsError.call(this, error);
 
     var cb = this.pending[invokeId];
@@ -141,8 +145,6 @@ var analyseResponse = function(data) {
     if ((!cb) && (commandId !== ID_NOTIFICATION)) { 
         throw "Recieved a response,  but I can't find the request"; 
     }
-
-    logPackage.call(this, "receiving", data, commandId, invokeId);
 
     data = data.slice(tcpHeaderSize + headerSize);
     switch (commandId) { 
@@ -854,7 +856,8 @@ var logPackage = function(info, buf, commandId, invokeId, symname) {
     }
 
     if (this.options.verbose > 1) {
-        console.log(buf);
+        console.log(buf.inspect());
+        //console.log(buf);
     }
 };
 
