@@ -112,8 +112,8 @@ var end = function(cb) {
         releaseNotificationHandles.call(this, function() {
             if (this.tcpClient) {
                 this.tcpClient.end();
-            }    
-            cb();     
+            }  
+            if (cb !== undefined) cb.call(this);     
         });
     });
 };
@@ -660,7 +660,7 @@ var integrateResultInHandle = function(handle, result) {
     for(var i=0;i<handle.propname.length;i++) {
         l = getItemByteLength(handle.bytelength[i], convert);
 
-        var value = result.slice(offset, l);
+        var value = result.slice(offset, offset + l);
 
         if (convert.isAdsType) {
             switch(handle.bytelength[i].name) {
@@ -696,7 +696,11 @@ var integrateResultInHandle = function(handle, result) {
                 case 'TIME_OF_DAY':
                 case 'DATE':
                 case 'DATE_AND_TIME':
-                    //TODO
+                    var seconds = result.readUInt32LE(offset);
+                    value = new Date(seconds * 1000);
+                    var timeoffset = value.getTimezoneOffset();
+                    //value = new Date(value.getMilliseconds() + timeoffset * 60 * 1000);
+                    value = new Date(value.setMinutes(value.getMinutes() + timeoffset));
                     break;
             }
         }
