@@ -76,7 +76,7 @@ client = ads.connect(options, function() {
 ```javascript
 client = ads.connect(options, function() {
     myHandle.value = 5;
-    this.write(myHandle, function(handle) {
+    this.write(myHandle, function() {
         this.read(myHandle, function(handle) {
             console.log(handle.value);
             this.end();
