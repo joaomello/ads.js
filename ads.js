@@ -811,7 +811,7 @@ var getBytesFromHandle = function(handle) {
                     //TODO
                     break;
             }
-        } else throw 'Property ' + p + ' not available on handle!';
+        } else if (typeof handle[p] === 'undefined') throw 'Property ' + p + ' not available on handle!';
     }
 
     handle.bytes = buf;
