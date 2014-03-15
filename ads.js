@@ -95,10 +95,6 @@ var connect = function(cb) {
         analyseResponse.call(that, data);
     });
 
-    this.tcpClient.on('drain', function() {
-        drained.call(that);
-    });
-
     this.tcpClient.on('timeout', function(data) {
         that.adsClient.emit('timeout', data);
         that.tcpClient.end();
