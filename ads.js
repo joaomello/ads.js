@@ -39,6 +39,7 @@ var getAdsObject = function(options) {
     ads.symHandlesToRelease = [];
     ads.notificationsToRelease = [];
     ads.notifications = {};
+    ads.writeFILO = [];
 
     var emitter = new events.EventEmitter();
     ads.adsClient = Object.create(emitter);
@@ -87,9 +88,15 @@ var connect = function(cb) {
     );
 
     //this.tcpClient.setKeepAlive(true);
+    this.tcpClient.setNoDelay(true);
+    sendCycle(this);
 
     this.tcpClient.on('data', function(data) {
         analyseResponse.call(that, data);
+    });
+
+    this.tcpClient.on('drain', function() {
+        drained.call(that);
     });
 
     this.tcpClient.on('timeout', function(data) {
@@ -474,8 +481,17 @@ var runCommand = function(options) {
     this.pending[this.invokeId] = options.cb;
 
     logPackage.call(this, "sending", buf, options.commandId, this.invokeId, options.symname);
-    this.tcpClient.write(buf);
+    this.writeFILO.push(buf);
 };
+
+var sendCycle = function(ads) {
+    if (ads.writeFILO.length > 0) {
+        ads.tcpClient.write(ads.writeFILO.shift());
+    }
+    setTimeout(function() {
+        sendCycle(ads);
+    }, 0);
+}
 
 ///////////////////// COMMAND RESULT PARSING ////////////////////////////
 
