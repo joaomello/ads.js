@@ -132,6 +132,7 @@ var ID_NOTIFICATION = 8;
 var ID_READ_WRITE = 9;
 
 var analyseResponse = function(data) {
+    var ads = this;
     var tcpHeaderSize = 6;
     var headerSize = 32;
     var commandId = data.readUInt16LE(22);
@@ -150,6 +151,14 @@ var analyseResponse = function(data) {
     }
 
     data = data.slice(tcpHeaderSize + headerSize);
+
+    var nextdata = null;
+    if (data.length > length) {
+        nextdata = new Buffer(data.length - length);
+        data.copy(nextdata, 0, length);   
+        data.slice(0, length);   
+    }
+
     switch (commandId) { 
         case ID_READ_DEVICE_INFO: 
             getDeviceInfoResult.call(this, data, cb);
@@ -181,6 +190,11 @@ var analyseResponse = function(data) {
         default: 
             throw 'Unknown command';
     }
+
+    if (nextdata !== null) {
+        analyseResponse.call(ads, nextdata);
+    }
+
 };
 
 /////////////////////// ADS FUNCTIONS ///////////////////////
@@ -482,9 +496,9 @@ var runCommand = function(options) {
 
 var sendCycle = function(ads) {
     if (ads.writeFILO.length > 0) {
-        ads.tcpClient.write(ads.writeFILO.shift());
+        ads.tcpClient.write(ads.writeFILO.shift());            
     }
-    setTimeout(function() {
+    setImmediate(function() {
         sendCycle(ads);
     }, 0);
 }
