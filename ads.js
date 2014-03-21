@@ -40,6 +40,9 @@ var getAdsObject = function(options) {
     ads.notificationsToRelease = [];
     ads.notifications = {};
     ads.writeFILO = [];
+    ads.dataStream = null;
+    ads.tcpHeaderSize = 6;
+    ads.amsHeaderSize = 32;
 
     var emitter = new events.EventEmitter();
     ads.adsClient = Object.create(emitter);
@@ -77,35 +80,40 @@ var getAdsObject = function(options) {
 };
 
 var connect = function(cb) {
-    var that = this;
+    var ads = this;
 
-    this.tcpClient = net.connect(
-        this.options.port, 
-        this.options.host, 
-        function(){
-            cb.apply(that.adsClient);
+    ads.tcpClient = net.connect(
+        ads.options.port, 
+        ads.options.host, 
+        function() {
+            cb.apply(ads.adsClient);
         }
     );
 
-    //this.tcpClient.setKeepAlive(true);
-    this.tcpClient.setNoDelay(true);
-    sendCycle(this);
+    //ads.tcpClient.setKeepAlive(true);
+    ads.tcpClient.setNoDelay(true);
+    sendCycle(ads);
 
-    this.tcpClient.on('data', function(data) {
-        analyseResponse.call(that, data);
+    ads.tcpClient.on('data', function(data) {
+        if (ads.dataStream === null) {
+            ads.dataStream = data;
+        } else {
+            ads.dataStream = Buffer.concat([ads.dataStream, data]);
+        }
+        checkResponseStream.call(ads);
     });
 
-    this.tcpClient.on('timeout', function(data) {
-        that.adsClient.emit('timeout', data);
-        that.tcpClient.end();
+    ads.tcpClient.on('timeout', function(data) {
+        ads.adsClient.emit('timeout', data);
+        ads.tcpClient.end();
     });
 
-    this.dataCallback = function(data) {
-        that.adsClient.emit('error', data);
-        that.tcpClient.end();
+    ads.dataCallback = function(data) {
+        ads.adsClient.emit('error', data);
+        ads.tcpClient.end();
     };
 
-    this.tcpClient.on('error', this.dataCallback);
+    ads.tcpClient.on('error', ads.dataCallback);
 };
 
 
@@ -131,33 +139,45 @@ var ID_DEL_NOTIFICATION = 7;
 var ID_NOTIFICATION = 8;
 var ID_READ_WRITE = 9;
 
-var analyseResponse = function(data) {
+var checkResponseStream = function() {
     var ads = this;
-    var tcpHeaderSize = 6;
-    var headerSize = 32;
-    var commandId = data.readUInt16LE(22);
-    var length = data.readUInt32LE(26);
-    var error = data.readUInt32LE(30);
-    var invokeId = data.readUInt32LE(34);
+    if (ads.dataStream !== null) {        
+        var headerSize = ads.tcpHeaderSize + ads.amsHeaderSize;
+        if (ads.dataStream.length > headerSize) {
+            var length = ads.dataStream.readUInt32LE(26);
+            if (ads.dataStream.length >= headerSize + length) {
+                analyseResponse.call(ads);            
+            }
+        }
+    }
+}
 
-    logPackage.call(this, "receiving", data, commandId, invokeId);
+var analyseResponse = function() {
+    var ads = this;
+    var commandId = ads.dataStream.readUInt16LE(22);
+    var length = ads.dataStream.readUInt32LE(26);
+    var error = ads.dataStream.readUInt32LE(30);
+    var invokeId = ads.dataStream.readUInt32LE(34);
 
-    emitAdsError.call(this, error);
+    logPackage.call(ads, "receiving", ads.dataStream, commandId, invokeId);
 
-    var cb = this.pending[invokeId];
+    emitAdsError.call(ads, error);
+
+    var cb = ads.pending[invokeId];
 
     if ((!cb) && (commandId !== ID_NOTIFICATION)) { 
+        console.log(ads.dataStream, invokeId, commandId);
         throw "Recieved a response,  but I can't find the request"; 
     }
 
-    data = data.slice(tcpHeaderSize + headerSize);
-
-    var nextdata = null;
-    if (data.length > length) {
-        nextdata = new Buffer(data.length - length);
-        data.copy(nextdata, 0, length);   
-        data.slice(0, length);   
-    }
+    var totHeadSize = ads.tcpHeaderSize + ads.amsHeaderSize;  
+    var data = new Buffer(length);                 
+    ads.dataStream.copy(data, 0, totHeadSize, totHeadSize + length);
+    if (ads.dataStream.length > totHeadSize + length) {
+        var nextdata = new Buffer(ads.dataStream.length - totHeadSize - length);
+        ads.dataStream.copy(nextdata, 0, totHeadSize + length);
+        ads.dataStream = nextdata;
+    } else ads.dataStream = null;
 
     switch (commandId) { 
         case ID_READ_DEVICE_INFO: 
@@ -191,10 +211,7 @@ var analyseResponse = function(data) {
             throw 'Unknown command';
     }
 
-    if (nextdata !== null) {
-        analyseResponse.call(ads, nextdata);
-    }
-
+    checkResponseStream.call(ads);
 };
 
 /////////////////////// ADS FUNCTIONS ///////////////////////
