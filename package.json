@@ -1,18 +1,18 @@
 {
     "name": "ads",
-    "version": "0.0.5",
+    "version": "0.0.6",
     "description": "Twincat ADS protocol implementation for NodeJS",
     "main": "ads.js",
     "keywords": ["twincat","plc", "ads", "beckhoff"],
     "author": "Roeland Moors",
-    "homepage": "https://github.com/roelandmoors/ads.js",
-    "bugs": { "url": "https://github.com/roelandmoors/ads.js/issues" },
+    "homepage": "https://github.com/domotics/ads.js",
+    "bugs": { "url": "https://github.com/domotics/ads.js/issues" },
     "licenses": [{
         "type": "MIT",
-        "url": "https://github.com/roelandmoors/ads.js/blob/master/README.md#license-mit"
+        "url": "https://github.com/domotics/ads.js/blob/master/README.md#license-mit"
     }],
     "repository" : {
         "type" : "git",
-        "url" : "https://github.com/roelandmoors/ads.js.git"
+        "url" : "https://github.com/domotics/ads.js.git"
     }
 }

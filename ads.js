@@ -118,13 +118,14 @@ var connect = function(cb) {
 
 
 var end = function(cb) {
-    this.tcpClient.removeListener('data', this.dataCallback);
-    releaseSymHandles.call(this, function(){
-        releaseNotificationHandles.call(this, function() {
-            if (this.tcpClient) {
-                this.tcpClient.end();
+    var ads = this;
+    ads.tcpClient.removeListener('data', ads.dataCallback);
+    releaseSymHandles.call(ads, function(){
+        releaseNotificationHandles.call(ads, function() {
+            if (ads.tcpClient) {
+                ads.tcpClient.end();
             }  
-            if (cb !== undefined) cb.call(this);     
+            if (cb !== undefined) cb.call(ads);     
         });
     });
 };
