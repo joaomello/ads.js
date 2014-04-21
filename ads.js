@@ -1034,34 +1034,61 @@ var adsType = {
     name: ''
 };
 
-function makeType(name, length) {
+
+exports.makeType = function(name) {
     var t = Object.create(adsType);
-    t.length = length;
+    t.length = typeLength[name];
     t.name = name;
+    return t;
+}
+
+function exportType(name) {
+    var t = exports.makeType(name);
     Object.defineProperty(exports, name, {
         value: t,
         writable: false
     });
 }
 
-makeType('BOOL', 1);
-makeType('BYTE', 1);
-makeType('WORD', 2);
-makeType('DWORD', 4);
-makeType('SINT', 1);
-makeType('USINT', 1);
-makeType('INT', 2);
-makeType('UINT', 2);
-makeType('DINT', 4);
-makeType('UDINT', 4);
-makeType('LINT', 8);
-makeType('ULINT', 8);
-makeType('REAL', 4);
-makeType('LREAL', 8);
-makeType('TIME', 4);
-makeType('TIME_OF_DAY', 4);
-makeType('DATE', 4);
-makeType('DATE_AND_TIME', 4);
+var typeLength = {
+    'BOOL': 1,
+    'BYTE': 1,
+    'WORD': 2,
+    'DWORD': 4,
+    'SINT': 1,
+    'USINT': 1,
+    'INT': 2,
+    'UINT': 2,
+    'DINT': 4,
+    'UDINT': 4,
+    'LINT': 8,
+    'ULINT': 8,
+    'REAL': 4,
+    'LREAL': 8,
+    'TIME': 4,
+    'TIME_OF_DAY': 4,
+    'DATE': 4,
+    'DATE_AND_TIME': 4
+};
+
+exportType('BOOL');
+exportType('BYTE');
+exportType('WORD');
+exportType('DWORD');
+exportType('SINT');
+exportType('USINT');
+exportType('INT');
+exportType('UINT');
+exportType('DINT');
+exportType('UDINT');
+exportType('LINT');
+exportType('ULINT');
+exportType('REAL');
+exportType('LREAL');
+exportType('TIME');
+exportType('TIME_OF_DAY');
+exportType('DATE');
+exportType('DATE_AND_TIME');
 
 exports.string = function(length) {
     var t = {
