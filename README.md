@@ -33,7 +33,7 @@ var options = {
 };
 
 client = ads.connect(options, function() {
-    this.readDeviceInfo(function(result) {
+    this.readDeviceInfo(function(err, result) {
         console.log(result);
         this.end();
     });
@@ -62,7 +62,7 @@ var myHandle = {
 };
 
 client = ads.connect(options, function() {
-    this.read(myHandle, function(handle) {
+    this.read(myHandle, function(err, handle) {
         //result is the myHandle object with the new properties filled in
         console.log(handle.value);
         //All handles will be released automaticly here
@@ -76,8 +76,8 @@ client = ads.connect(options, function() {
 ```javascript
 client = ads.connect(options, function() {
     myHandle.value = 5;
-    this.write(myHandle, function() {
-        this.read(myHandle, function(handle) {
+    this.write(myHandle, function(err) {
+        this.read(myHandle, function(err, handle) {
             console.log(handle.value);
             this.end();
         });

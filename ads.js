@@ -157,12 +157,12 @@ var analyseResponse = function() {
     var ads = this;
     var commandId = ads.dataStream.readUInt16LE(22);
     var length = ads.dataStream.readUInt32LE(26);
-    var error = ads.dataStream.readUInt32LE(30);
+    var errorId = ads.dataStream.readUInt32LE(30);
     var invokeId = ads.dataStream.readUInt32LE(34);
 
     logPackage.call(ads, "receiving", ads.dataStream, commandId, invokeId);
 
-    emitAdsError.call(ads, error);
+    emitAdsError.call(ads, errorId);
 
     var cb = ads.pending[invokeId];
 
@@ -230,61 +230,72 @@ var readDeviceInfo = function(cb) {
 
 var read = function(handle, cb) {
     var ads = this;
-    getHandle.call(ads, handle, function(handle) {
+    getHandle.call(ads, handle, function(err, handle) {
 
-        var commandOptions = {
-            indexGroup: 0x0000F005,
-            indexOffset: handle.symhandle,
-            bytelength: handle.totalByteLength,
-            symname: handle.symnane,
-        };
+        if (!err) {
+            var commandOptions = {
+                indexGroup: 0x0000F005,
+                indexOffset: handle.symhandle,
+                bytelength: handle.totalByteLength,
+                symname: handle.symnane,
+            };
 
-        readCommand.call(ads, commandOptions, function(result) {
-            integrateResultInHandle(handle, result);
-            cb.call(ads.adsClient, handle);
-        });
+            readCommand.call(ads, commandOptions, function(err, result) {
+                integrateResultInHandle(handle, result);
+                cb.call(ads.adsClient, err, handle);
+            });
+        } else { 
+            cb.call(ads.adsClient, err);
+        }
     });  
 };
 
 var write = function(handle, cb) {
     var ads = this;
-    getHandle.call(ads, handle, function(handle) {
-        getBytesFromHandle(handle);
-        var commandOptions = {
-            indexGroup: 0x0000F005,
-            indexOffset: handle.symhandle,
-            bytelength: handle.totalByteLength,
-            bytes: handle.bytes,
-            symname: handle.symname,
-        };
-        writeCommand.call(ads, commandOptions, function(result) {
-            cb.call(ads.adsClient);
-        });
+    getHandle.call(ads, handle, function(err, handle) {
+        if (!err) {
+            getBytesFromHandle(handle);
+            var commandOptions = {
+                indexGroup: 0x0000F005,
+                indexOffset: handle.symhandle,
+                bytelength: handle.totalByteLength,
+                bytes: handle.bytes,
+                symname: handle.symname,
+            };
+            writeCommand.call(ads, commandOptions, function(err, result) {
+                cb.call(ads.adsClient, err);
+            });
+        } else { 
+            cb.call(ads.adsClient, err);
+        }
     });  
 };
 
 var notify = function(handle, cb) {
     var ads = this;
-    getHandle.call(ads, handle, function(handle) {
-        var commandOptions = {
-            indexGroup: 0x0000F005,
-            indexOffset: handle.symhandle,
-            bytelength: handle.totalByteLength,
-            transmissionMode: handle.transmissionMode, 
-            maxDelay: handle.maxDelay, 
-            cycleTime: handle.cycleTime,
-            symname: handle.symname,
-        };
-        addNotificationCommand.call(ads, commandOptions, function(notiHandle) {
-            if (ads.options.verbose > 0) {
-                console.log("Add notiHandle " + notiHandle);
-            }
+    getHandle.call(ads, handle, function(err, handle) {
+        if (!err) {
+            var commandOptions = {
+                indexGroup: 0x0000F005,
+                indexOffset: handle.symhandle,
+                bytelength: handle.totalByteLength,
+                transmissionMode: handle.transmissionMode, 
+                maxDelay: handle.maxDelay, 
+                cycleTime: handle.cycleTime,
+                symname: handle.symname,
+            };
+            
+            addNotificationCommand.call(ads, commandOptions, function(err, notiHandle) {
+                if (ads.options.verbose > 0) {
+                    console.log("Add notiHandle " + notiHandle);
+                }
 
-            this.notifications[notiHandle] = handle;
-            if (typeof cb !== 'undefined') {
-                cb.call(ads.adsClient);
-            } 
-        });
+                this.notifications[notiHandle] = handle;
+                if (typeof cb !== 'undefined') {
+                    cb.call(ads.adsClient, err);
+                } 
+            });
+        } else cb.call(ads.adsClient, err);
     });  
 };
 
@@ -303,17 +314,19 @@ var getHandle = function(handle, cb) {
             symname: handle.symname,
         };
 
-        writeReadCommand.call(ads, commandOptions, function(result) {
+        writeReadCommand.call(ads, commandOptions, function(err, result) {
 
-            if (result.length > 0) {
-                ads.symHandlesToRelease.push(result);
-                handle.symhandle = result.readUInt32LE(0);
-                cb.call(ads, handle);
-            //} else {
-            //    ads.adsClient.emit('error', new Error("Empty handle result!"));
+            if (err) {
+                cb.call(ads, err) 
+            } else {
+                if (result.length > 0) {
+                    ads.symHandlesToRelease.push(result);
+                    handle.symhandle = result.readUInt32LE(0);
+                    cb.call(ads, null, handle);
+                } 
             }
         });
-    } else cb.call(ads, handle);
+    } else cb.call(ads, err, handle);
 
 };
 
@@ -335,8 +348,8 @@ var releaseSymHandle = function(symhandle, cb) {
         bytelength: symhandle.length,
         bytes: symhandle
     };
-    writeCommand.call(this, commandOptions, function(){
-        cb.call(ads);    
+    writeCommand.call(this, commandOptions, function(err){
+        cb.call(ads, err);    
     });
 };
 
@@ -525,54 +538,68 @@ var sendCycle = function(ads) {
 
 var getDeviceInfoResult = function(data, cb){
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
+    //emitAdsError.call(this, adsError);
+    var err = getError(adsError);
 
-    var result = {
-        majorVersion: data.readUInt8(4),
-        minorVersion: data.readUInt8(5),
-        versionBuild: data.readUInt16LE(6),
-        deviceName: data.toString('utf8', 8, findStringEnd(data, 8))
-    };
+    if (!err) {
+        var result = {
+            majorVersion: data.readUInt8(4),
+            minorVersion: data.readUInt8(5),
+            versionBuild: data.readUInt16LE(6),
+            deviceName: data.toString('utf8', 8, findStringEnd(data, 8))
+        };
+    }    
 
-    cb.call(this.adsClient, result); 
+    cb.call(this.adsClient, err, result); 
 };
 
 var getReadResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
-    var bytelength = data.readUInt32LE(4);
-    var result = new Buffer(bytelength);
-    data.copy(result, 0, 8, 8 + bytelength);
-    cb.call(this, result);
+    //emitAdsError.call(this, adsError);
+    var err = getError(adsError);
+    if (!err) {
+        var bytelength = data.readUInt32LE(4);
+        var result = new Buffer(bytelength);
+        data.copy(result, 0, 8, 8 + bytelength);        
+    }
+    cb.call(this, err, result);
 };
 
 var getWriteReadResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
-    var bytelength = data.readUInt32LE(4);
-    var result = new Buffer(bytelength);
-    data.copy(result, 0, 8, 8 + bytelength);
-    cb.call(this, result);
+    //emitAdsError.call(this, adsError);
+    var err = getError(adsError);
+    if (!err) {
+        var bytelength = data.readUInt32LE(4);
+        var result = new Buffer(bytelength);
+        data.copy(result, 0, 8, 8 + bytelength);
+    }
+    cb.call(this, err, result);
 };
 
 var getWriteResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
-    cb.call(this);
+    var err = getError(adsError);
+    //emitAdsError.call(this, adsError);
+    cb.call(this, err);
 };
 
 var getAddDeviceNotificationResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
-    var notificationHandle = data.readUInt32LE(4);
-    this.notificationsToRelease.push(notificationHandle);
-    cb.call(this, notificationHandle);
+    //emitAdsError.call(this, adsError);
+    var err = getError(adsError);
+    if (!err) {
+        var notificationHandle = data.readUInt32LE(4);
+        this.notificationsToRelease.push(notificationHandle);
+    }
+    cb.call(this, err, notificationHandle);
 };
 
 var getDeleteDeviceNotificationResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
-    emitAdsError.call(this, adsError);
-    cb.call(this);
+    //emitAdsError.call(this, adsError);
+    var err = getError(adsError);
+    cb.call(this, err);
 };
 
 var getNotificationResult = function(data) {
@@ -909,8 +936,17 @@ var logPackage = function(info, buf, commandId, invokeId, symname) {
 };
 
 var emitAdsError = function(errorId)  {
-    var msg = "";
+    var err = getError(errorId);
+    if (err) {
+        this.adsClient.emit('error', err);
+    }
+};
+
+
+var getError = function(errorId) {
+    var error = null;
     if (errorId > 0) {
+        var msg = "";
         switch(errorId) {
             case 1 : msg = "Internal error"; break;
             case 2 : msg = "No Rtime"; break;
@@ -993,10 +1029,9 @@ var emitAdsError = function(errorId)  {
             case 1877: msg="sync port is locked"; break;
         }
 
-        var error = new Error(msg);
-
-        this.adsClient.emit('error', error);
+        error = new Error(msg);
     }
+    return error;
 };
 
 ////////////////////////////// ADS TYPES /////////////////////////////////
