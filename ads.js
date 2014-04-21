@@ -39,7 +39,6 @@ var getAdsObject = function(options) {
     ads.symHandlesToRelease = [];
     ads.notificationsToRelease = [];
     ads.notifications = {};
-    ads.writeFILO = [];
     ads.dataStream = null;
     ads.tcpHeaderSize = 6;
     ads.amsHeaderSize = 32;
@@ -92,7 +91,6 @@ var connect = function(cb) {
 
     //ads.tcpClient.setKeepAlive(true);
     ads.tcpClient.setNoDelay(true);
-    sendCycle(ads);
 
     ads.tcpClient.on('data', function(data) {
         if (ads.dataStream === null) {
@@ -449,6 +447,7 @@ var deleteDeviceNotificationCommand = function(notificationHandle, cb) {
 };
 
 var runCommand = function(options) {
+    var that = this;
     var tcpHeaderSize = 6;
     var headerSize = 32;
     var offset = 0;
@@ -522,17 +521,10 @@ var runCommand = function(options) {
     this.pending[this.invokeId] = options.cb;
 
     logPackage.call(this, "sending", buf, options.commandId, this.invokeId, options.symname);
-    this.writeFILO.push(buf);
-};
-
-var sendCycle = function(ads) {
-    if (ads.writeFILO.length > 0) {
-        ads.tcpClient.write(ads.writeFILO.shift());            
-    }
     setImmediate(function() {
-        sendCycle(ads);
-    }, 0);
-}
+        that.tcpClient.write(buf);
+    });
+};
 
 ///////////////////// COMMAND RESULT PARSING ////////////////////////////
 
