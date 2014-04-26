@@ -149,7 +149,7 @@ var checkResponseStream = function() {
             }
         }
     }
-}
+};
 
 var analyseResponse = function() {
     var ads = this;
@@ -315,7 +315,7 @@ var getHandle = function(handle, cb) {
         writeReadCommand.call(ads, commandOptions, function(err, result) {
 
             if (err) {
-                cb.call(ads, err) 
+                cb.call(ads, err);
             } else {
                 if (result.length > 0) {
                     ads.symHandlesToRelease.push(result);
@@ -324,7 +324,7 @@ var getHandle = function(handle, cb) {
                 } 
             }
         });
-    } else cb.call(ads, err, handle);
+    } else cb.call(ads, null, handle);
 
 };
 
@@ -532,9 +532,10 @@ var getDeviceInfoResult = function(data, cb){
     var adsError = data.readUInt32LE(0);
     //emitAdsError.call(this, adsError);
     var err = getError(adsError);
+    var result;
 
     if (!err) {
-        var result = {
+        result = {
             majorVersion: data.readUInt8(4),
             minorVersion: data.readUInt8(5),
             versionBuild: data.readUInt16LE(6),
@@ -547,11 +548,12 @@ var getDeviceInfoResult = function(data, cb){
 
 var getReadResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
+    var result;
     //emitAdsError.call(this, adsError);
     var err = getError(adsError);
     if (!err) {
         var bytelength = data.readUInt32LE(4);
-        var result = new Buffer(bytelength);
+        result = new Buffer(bytelength);
         data.copy(result, 0, 8, 8 + bytelength);        
     }
     cb.call(this, err, result);
@@ -559,11 +561,12 @@ var getReadResult = function(data, cb) {
 
 var getWriteReadResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
+    var result;
     //emitAdsError.call(this, adsError);
     var err = getError(adsError);
     if (!err) {
         var bytelength = data.readUInt32LE(4);
-        var result = new Buffer(bytelength);
+        result = new Buffer(bytelength);
         data.copy(result, 0, 8, 8 + bytelength);
     }
     cb.call(this, err, result);
@@ -578,10 +581,11 @@ var getWriteResult = function(data, cb) {
 
 var getAddDeviceNotificationResult = function(data, cb) {
     var adsError = data.readUInt32LE(0);
+    var notificationHandle;
     //emitAdsError.call(this, adsError);
     var err = getError(adsError);
     if (!err) {
-        var notificationHandle = data.readUInt32LE(4);
+        notificationHandle = data.readUInt32LE(4);
         this.notificationsToRelease.push(notificationHandle);
     }
     cb.call(this, err, notificationHandle);
@@ -1040,7 +1044,7 @@ exports.makeType = function(name) {
     t.length = typeLength[name];
     t.name = name;
     return t;
-}
+};
 
 function exportType(name) {
     var t = exports.makeType(name);
