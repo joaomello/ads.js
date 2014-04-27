@@ -70,6 +70,10 @@ var getAdsObject = function(options) {
         return notify.call(ads, handle, cb);
     };
 
+    ads.adsClient.getSymbols = function(cb) {
+        return getSymbols.call(ads, cb);
+    };
+
     Object.defineProperty(ads.adsClient, "options", {
         get options() { return ads.options; },
         set options(v) { ads.options = v; }
@@ -295,6 +299,64 @@ var notify = function(handle, cb) {
             });
         } else cb.call(ads.adsClient, err);
     });  
+};
+
+var getSymbols = function(cb) {
+    var ads = this;
+    var cmdLength = {
+        indexGroup: 0x0000F00F,
+        indexOffset: 0x00000000,
+        bytelength: 0x30
+    };
+
+    var cmdSymbols = {
+        indexGroup: 0x0000F00B,
+        indexOffset: 0x00000000,
+    };
+
+    readCommand.call(ads, cmdLength, function(err, result) {
+        var data = result.readInt32LE(4);
+        cmdSymbols.bytelength = data;
+
+        readCommand.call(ads, cmdSymbols, function(err, result) {
+
+            var symbols = [];
+            var pos = 0;
+            while (pos < result.length) {
+                var symbol = {};
+                var readLength = result.readUInt32LE(pos);
+                symbol.indexGroup = result.readUInt32LE(pos + 4);
+                symbol.indexOffset = result.readUInt32LE(pos + 8);
+                //symbol.size = result.readUInt32LE(pos + 12);
+                //symbol.type = result.readUInt32LE(pos + 16); //ADST_ ...
+                //symbol.something = result.readUInt32LE(pos + 20);
+                var nameLength = result.readUInt16LE(pos + 24) + 1;
+                var typeLength = result.readUInt16LE(pos + 26) + 1;
+                var commentLength = result.readUInt16LE(pos + 28) + 1;
+
+                pos = pos + 30;
+
+                var nameBuf = new Buffer(nameLength);
+                result.copy(nameBuf, 0, pos, pos+nameLength);
+                symbol.name = nameBuf.toString('utf8', 0, findStringEnd(nameBuf, 0));
+                pos = pos+nameLength;
+
+                var typeBuf = new Buffer(typeLength);
+                result.copy(typeBuf, 0, pos, pos+typeLength);
+                symbol.type = typeBuf.toString('utf8', 0, findStringEnd(typeBuf, 0));
+                pos = pos+typeLength;
+
+                var commentBuf = new Buffer(commentLength);
+                result.copy(commentBuf, 0, pos, pos+commentLength);
+                symbol.comment = commentBuf.toString('utf8', 0, findStringEnd(commentBuf, 0));
+                pos = pos+commentLength;
+
+                symbols.push(symbol);
+            }            
+
+            cb.call(ads.adsClient, err, symbols);
+        });
+    });
 };
 
 var getHandle = function(handle, cb) {

@@ -117,6 +117,17 @@ process.on('SIGINT', function() {
 });
 ```
 
+### Get symbol list
+
+```javascript
+client = ads.connect(options, function() {
+    this.getSymbols(function(err, symbols) {
+        console.log(symbols);
+        this.end();
+    });
+});
+```
+
 License (MIT)
 -------------
 Copyright (c) 2012 Roeland Moors
