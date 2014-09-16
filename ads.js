@@ -238,7 +238,7 @@ var read = function(handle, cb) {
 
         if (!err) {
             var commandOptions = {
-                indexGroup: 0x0000F005,
+                indexGroup: handle.indexGroup || 0x0000F005,
                 indexOffset: handle.symhandle,
                 bytelength: handle.totalByteLength,
                 symname: handle.symnane,
@@ -260,7 +260,7 @@ var write = function(handle, cb) {
         if (!err) {
             getBytesFromHandle(handle);
             var commandOptions = {
-                indexGroup: 0x0000F005,
+                indexGroup: handle.indexGroup || 0x0000F005,
                 indexOffset: handle.symhandle,
                 bytelength: handle.totalByteLength,
                 bytes: handle.bytes,
