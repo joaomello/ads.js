@@ -831,6 +831,9 @@ var integrateResultInHandle = function(handle, result) {
                 case 'LREAL':
                     value = result.readDoubleLE(offset);
                     break;
+                case 'STRING':
+                	value = result.toString('utf8', offset, findStringEnd(result, offset));
+                	break;
                 case 'TIME':
                 case 'TIME_OF_DAY':
                 case 'DATE':
@@ -943,6 +946,10 @@ var getBytesFromHandle = function(handle) {
                 case 'LREAL':
                     buf.writeDoubleLE(handle[p], offset);
                     break;
+                case 'STRING':
+                	var stringbuf = new Buffer(handle[p].toString() + "\0", "utf8");
+                	stringbuf.copy(buf, offset);
+                	break;
                 case 'TIME':
                 case 'TIME_OF_DAY':
                 case 'DATE':
@@ -1144,7 +1151,8 @@ var typeLength = {
     'TIME': 4,
     'TIME_OF_DAY': 4,
     'DATE': 4,
-    'DATE_AND_TIME': 4
+    'DATE_AND_TIME': 4,
+    'STRING': 81
 };
 
 exportType('BOOL');
@@ -1165,6 +1173,7 @@ exportType('TIME');
 exportType('TIME_OF_DAY');
 exportType('DATE');
 exportType('DATE_AND_TIME');
+exportType('STRING');
 
 exports.string = function(length) {
     var t = {
